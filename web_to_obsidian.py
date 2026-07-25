@@ -3,21 +3,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import fcntl
 import hashlib
+import http.client
+import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import shlex
 import signal
+import socket
+import ssl
 import subprocess
 import tempfile
 import threading
 import tomllib
 import unicodedata
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 from typing import Mapping, Sequence
 
 import yaml
@@ -30,6 +34,8 @@ MAX_STDERR_BYTES = 64 * 1024
 MAX_GIT_OUTPUT_BYTES = 2 * 1024 * 1024
 MAX_FILENAME_BYTES = 180
 MAX_DESTINATION_SCAN_ENTRIES = 10_000
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
+PENDING_TTL_SECONDS = 60 * 60
 DOS_RESERVED = {
     "CON",
     "PRN",
@@ -38,9 +44,57 @@ DOS_RESERVED = {
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
 }
-_PROTECTED_BRANCHES = {"main", "master", "dev", "develop"}
 _FORBIDDEN_FILENAME = set('<>:"/\\|?*')
 _SAFE_ERROR_CODE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+_SAFE_BRANCH_NAME = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
+_REMOTE_MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\((https?://[^\s)]+)(?:\s+\"[^\"]*\")?\)", re.IGNORECASE)
+_GITHUB_REMOTE_HTTPS = re.compile(r"^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$")
+_GITHUB_REMOTE_SSH = re.compile(r"^git@github\.com:([^/]+)/([^/]+?)(?:\.git)?$")
+_REMOTE_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+_REMOTE_FETCH_POLICY_MESSAGE = "The remote image URL is blocked by network policy."
+_BLOCKED_IMAGE_IPV4_NETWORKS = tuple(
+    ipaddress.ip_network(cidr)
+    for cidr in (
+        "0.0.0.0/8",
+        "10.0.0.0/8",
+        "100.64.0.0/10",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "172.16.0.0/12",
+        "192.0.0.0/24",
+        "192.0.2.0/24",
+        "192.88.99.0/24",
+        "192.168.0.0/16",
+        "198.18.0.0/15",
+        "198.51.100.0/24",
+        "203.0.113.0/24",
+        "224.0.0.0/4",
+        "240.0.0.0/4",
+    )
+)
+_BLOCKED_IMAGE_IPV6_NETWORKS = tuple(
+    ipaddress.ip_network(cidr)
+    for cidr in (
+        "::/96",
+        "::/128",
+        "::1/128",
+        "64:ff9b::/96",
+        "64:ff9b:1::/48",
+        "100::/64",
+        "2001::/23",
+        "2001:2::/48",
+        "2001:10::/28",
+        "2001:20::/28",
+        "2001:db8::/32",
+        "2002::/16",
+        "3fff::/20",
+        "5f00::/16",
+        "fc00::/7",
+        "fe80::/10",
+        "fec0::/10",
+        "ff00::/8",
+    )
+)
 
 
 class ClipError(Exception):
@@ -53,6 +107,7 @@ class ClipOptions:
     no_browser: bool
     no_git: bool
     refresh: bool
+    save_images: str = "ask"
 
 
 @dataclass(frozen=True)
@@ -78,10 +133,8 @@ class ClipConfig:
         images = _resolve_vault_path(
             vault, values.get("WEB_TO_OBSIDIAN_IMAGES", "images")
         )
-        sync_branch = values.get(
-            "WEB_TO_OBSIDIAN_SYNC_BRANCH", "feature/web-to-obsidian-clip"
-        ).strip()
-        if not sync_branch or sync_branch.lower() in _PROTECTED_BRANCHES:
+        sync_branch = values.get("WEB_TO_OBSIDIAN_SYNC_BRANCH", "master").strip()
+        if not sync_branch or not _SAFE_BRANCH_NAME.fullmatch(sync_branch):
             raise ClipError("The configured Git sync branch is unsafe.")
         default_lock = (
             Path("~/.local/state/web-to-obsidian").expanduser()
@@ -120,9 +173,7 @@ class ClipConfig:
             "WEB_TO_OBSIDIAN_VAULT": section.get("vault", "~/obsidian/shijistar"),
             "WEB_TO_OBSIDIAN_DEST": section.get("destination", "Inbox"),
             "WEB_TO_OBSIDIAN_IMAGES": section.get("images", "images"),
-            "WEB_TO_OBSIDIAN_SYNC_BRANCH": section.get(
-                "sync_branch", "feature/web-to-obsidian-clip"
-            ),
+            "WEB_TO_OBSIDIAN_SYNC_BRANCH": section.get("sync_branch", "master"),
         }
         if "lock_file" in section:
             mapping["WEB_TO_OBSIDIAN_LOCK_FILE"] = section["lock_file"]
@@ -148,16 +199,21 @@ class ClipResult:
     path: str
     commit_state: str
     push_state: str
+    github_url: str | None = None
 
     def user_message(self) -> str:
         if self.commit_state == "disabled":
-            return f"Saved clip: {self.path} (Git synchronization disabled)."
+            message = f"Saved clip: {self.path} (Git synchronization disabled)."
+            return f"{message} GitHub: {self.github_url}" if self.github_url else message
         if self.commit_state == "committed" and self.push_state == "pushed":
-            return f"Saved clip: {self.path} (committed and pushed)."
+            message = f"Saved clip: {self.path} (committed and pushed)."
+            return f"{message} GitHub: {self.github_url}" if self.github_url else message
         if self.commit_state == "unchanged":
-            return f"Saved clip: {self.path} (content unchanged; no Git commit needed)."
+            message = f"Saved clip: {self.path} (content unchanged; no Git commit needed)."
+            return f"{message} GitHub: {self.github_url}" if self.github_url else message
         if self.commit_state == "committed":
-            return f"Saved clip: {self.path} (committed; push failed)."
+            message = f"Saved clip: {self.path} (committed; push failed)."
+            return f"{message} GitHub: {self.github_url}" if self.github_url else message
         if self.commit_state == "committed_unverified":
             return (
                 f"Saved clip: {self.path} "
@@ -171,6 +227,74 @@ class ClipResult:
             f"Saved clip: {self.path} "
             "(Git safety verification refused synchronization; not committed or pushed)."
         )
+
+
+@dataclass(frozen=True)
+class PendingClipResult:
+    title: str
+    image_count: int
+
+    def user_message(self) -> str:
+        noun = "image" if self.image_count == 1 else "images"
+        return (
+            f"Found {self.image_count} remote {noun} in '{self.title}'. "
+            "Reply yes or no: yes downloads and localizes them, no keeps the remote image URLs."
+        )
+
+
+@dataclass(frozen=True)
+class PendingClipState:
+    pending_id: str
+    created_at: str
+    expires_at: str
+    article: Mapping[str, object]
+    refresh: bool
+    no_git: bool
+    vault: str
+    destination: str
+    images: str
+    sync_branch: str
+
+    def to_json(self) -> dict[str, object]:
+        return {
+            "pending_id": self.pending_id,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+            "article": dict(self.article),
+            "refresh": self.refresh,
+            "no_git": self.no_git,
+            "vault": self.vault,
+            "destination": self.destination,
+            "images": self.images,
+            "sync_branch": self.sync_branch,
+        }
+
+    def matches_config(self, config: ClipConfig) -> bool:
+        return (
+            self.vault == str(config.vault)
+            and self.destination == str(config.destination)
+            and self.images == str(config.images)
+            and self.sync_branch == config.sync_branch
+        )
+
+
+@dataclass(frozen=True)
+class _ApprovedRemoteImageUrl:
+    url: str
+    scheme: str
+    hostname: str
+    port: int
+    host_header: str
+    request_target: str
+    address: str
+    family: int
+
+
+@dataclass(frozen=True)
+class _PinnedRemoteResponse:
+    status_code: int
+    headers: Mapping[str, str]
+    body: bytes
 
 
 def _resolve_vault_path(vault: Path, configured: str) -> Path:
@@ -207,7 +331,7 @@ def _validate_http_url(value: str) -> None:
 
 
 def parse_clip_args(raw_args: str) -> ClipOptions:
-    """Parse one URL and the two supported flags without invoking a shell."""
+    """Parse one URL and the supported flags without invoking a shell."""
     try:
         tokens = shlex.split(raw_args, posix=True)
     except ValueError as exc:
@@ -216,25 +340,40 @@ def parse_clip_args(raw_args: str) -> ClipOptions:
     no_browser = False
     no_git = False
     refresh = False
+    save_images = "ask"
     urls: list[str] = []
-    for token in tokens:
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
         if token == "--no-browser":
             no_browser = True
         elif token == "--no-git":
             no_git = True
         elif token == "--refresh":
             refresh = True
+        elif token == "--save-images":
+            index += 1
+            if index >= len(tokens):
+                raise ClipError("The --save-images option requires yes, no, or ask.")
+            save_images = tokens[index].strip().lower()
+            if save_images not in {"yes", "no", "ask"}:
+                raise ClipError("The --save-images option only accepts yes, no, or ask.")
         elif token.startswith("-"):
             raise ClipError("Unknown /clip option.")
         else:
             urls.append(token)
+        index += 1
     if len(urls) != 1:
         raise ClipError(
-            "Usage: /clip <url> [--refresh] [--no-browser] [--no-git]"
+            "Usage: /clip <url> [--refresh] [--no-browser] [--no-git] [--save-images yes|no|ask]"
         )
     _validate_http_url(urls[0])
     return ClipOptions(
-        url=urls[0], no_browser=no_browser, no_git=no_git, refresh=refresh
+        url=urls[0],
+        no_browser=no_browser,
+        no_git=no_git,
+        refresh=refresh,
+        save_images=save_images,
     )
 
 
@@ -257,6 +396,222 @@ def normalize_url(value: str) -> str:
     return urlunsplit((scheme, netloc, path, parsed.query, ""))
 
 
+def _is_blocked_remote_ip(address: str) -> bool:
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return True
+    if isinstance(parsed, ipaddress.IPv6Address) and parsed.ipv4_mapped is not None:
+        parsed = parsed.ipv4_mapped
+    networks = (
+        _BLOCKED_IMAGE_IPV4_NETWORKS
+        if isinstance(parsed, ipaddress.IPv4Address)
+        else _BLOCKED_IMAGE_IPV6_NETWORKS
+    )
+    return any(parsed in network for network in networks)
+
+
+def _remote_host_header(hostname: str, port: int, scheme: str) -> str:
+    formatted = f"[{hostname}]" if ":" in hostname else hostname
+    default_port = 80 if scheme == "http" else 443
+    return formatted if port == default_port else f"{formatted}:{port}"
+
+
+def _resolve_remote_image_url(
+    value: str,
+    *,
+    resolver=socket.getaddrinfo,
+) -> _ApprovedRemoteImageUrl:
+    normalized = normalize_url(value)
+    parsed = urlsplit(normalized)
+    scheme = parsed.scheme.lower()
+    hostname = parsed.hostname or ""
+    port = parsed.port or (80 if scheme == "http" else 443)
+    default_port = 80 if scheme == "http" else 443
+    if parsed.port is not None and port != default_port:
+        raise ClipError(_REMOTE_FETCH_POLICY_MESSAGE)
+    try:
+        ascii_hostname = hostname.encode("idna").decode("ascii")
+    except UnicodeError as exc:
+        raise ClipError(_REMOTE_FETCH_POLICY_MESSAGE) from exc
+    try:
+        infos = resolver(
+            ascii_hostname,
+            port,
+            type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP,
+        )
+    except OSError as exc:
+        raise ClipError("Downloading a remote image failed.") from exc
+    if not infos:
+        raise ClipError("Downloading a remote image failed.")
+    approved: list[tuple[int, str]] = []
+    seen: set[tuple[int, str]] = set()
+    for family, _socktype, _proto, _canonname, sockaddr in infos:
+        if family not in {socket.AF_INET, socket.AF_INET6} or not sockaddr:
+            raise ClipError(_REMOTE_FETCH_POLICY_MESSAGE)
+        address = sockaddr[0]
+        key = (family, address)
+        if key in seen:
+            continue
+        seen.add(key)
+        if _is_blocked_remote_ip(address):
+            raise ClipError(_REMOTE_FETCH_POLICY_MESSAGE)
+        approved.append(key)
+    if not approved:
+        raise ClipError("Downloading a remote image failed.")
+    request_target = parsed.path or "/"
+    if parsed.query:
+        request_target = f"{request_target}?{parsed.query}"
+    family, address = approved[0]
+    return _ApprovedRemoteImageUrl(
+        url=normalized,
+        scheme=scheme,
+        hostname=ascii_hostname,
+        port=port,
+        host_header=_remote_host_header(ascii_hostname, port, scheme),
+        request_target=request_target,
+        address=address,
+        family=family,
+    )
+
+
+def _socket_target(address: str, family: int, port: int) -> tuple[object, ...]:
+    return (address, port, 0, 0) if family == socket.AF_INET6 else (address, port)
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, approved: _ApprovedRemoteImageUrl, *, timeout: float):
+        super().__init__(approved.hostname, approved.port, timeout=timeout)
+        self._approved = approved
+
+    def connect(self) -> None:
+        sock = socket.socket(self._approved.family, socket.SOCK_STREAM)
+        try:
+            sock.settimeout(self.timeout)
+            sock.connect(_socket_target(self._approved.address, self._approved.family, self._approved.port))
+        except Exception:
+            sock.close()
+            raise
+        self.sock = sock
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, approved: _ApprovedRemoteImageUrl, *, timeout: float):
+        super().__init__(approved.hostname, approved.port, timeout=timeout)
+        self._approved = approved
+
+    def connect(self) -> None:
+        raw_sock = socket.socket(self._approved.family, socket.SOCK_STREAM)
+        try:
+            raw_sock.settimeout(self.timeout)
+            raw_sock.connect(_socket_target(self._approved.address, self._approved.family, self._approved.port))
+            context = ssl.create_default_context()
+            self.sock = context.wrap_socket(raw_sock, server_hostname=self._approved.hostname)
+        except Exception:
+            raw_sock.close()
+            raise
+
+
+def _read_remote_response_body(response: http.client.HTTPResponse, max_bytes: int) -> bytes:
+    declared = response.getheader("Content-Length")
+    if declared is not None:
+        try:
+            if int(declared) > max_bytes:
+                raise ClipError("A remote image is too large to save safely.")
+        except ValueError:
+            pass
+    payload = bytearray()
+    while True:
+        chunk = response.read(min(64 * 1024, max_bytes + 1 - len(payload)))
+        if not chunk:
+            break
+        payload.extend(chunk)
+        if len(payload) > max_bytes:
+            raise ClipError("A remote image is too large to save safely.")
+    return bytes(payload)
+
+
+def _perform_pinned_remote_image_request(
+    approved: _ApprovedRemoteImageUrl,
+    *,
+    timeout: int,
+    max_bytes: int,
+) -> _PinnedRemoteResponse:
+    connection: http.client.HTTPConnection
+    if approved.scheme == "https":
+        connection = _PinnedHTTPSConnection(approved, timeout=timeout)
+    else:
+        connection = _PinnedHTTPConnection(approved, timeout=timeout)
+    try:
+        connection.request(
+            "GET",
+            approved.request_target,
+            headers={
+                "Host": approved.host_header,
+                "User-Agent": "Mozilla/5.0 Hermes web-to-obsidian",
+                "Accept": "image/*,*/*;q=0.8",
+                "Accept-Encoding": "identity",
+                "Connection": "close",
+            },
+        )
+        response = connection.getresponse()
+        status_code = int(response.status)
+        headers = {name: value for name, value in response.getheaders()}
+        body = (
+            b""
+            if status_code in _REMOTE_REDIRECT_STATUSES
+            else _read_remote_response_body(response, max_bytes)
+        )
+        return _PinnedRemoteResponse(status_code=status_code, headers=headers, body=body)
+    except ClipError:
+        raise
+    except (OSError, ssl.SSLError, http.client.HTTPException) as exc:
+        raise ClipError("Downloading a remote image failed.") from exc
+    finally:
+        connection.close()
+
+
+def _first_remote_header(headers: Mapping[str, str], name: str) -> str | None:
+    for header_name, value in headers.items():
+        if header_name.lower() == name.lower():
+            return value
+    return None
+
+
+def _fetch_remote_image(
+    url: str,
+    *,
+    resolver=socket.getaddrinfo,
+    request_impl=None,
+) -> tuple[str, str, bytes]:
+    current = url
+    fetch = _perform_pinned_remote_image_request if request_impl is None else request_impl
+    for redirect_count in range(6):
+        approved = _resolve_remote_image_url(current, resolver=resolver)
+        response = fetch(approved, timeout=30, max_bytes=MAX_IMAGE_BYTES)
+        if response.status_code in _REMOTE_REDIRECT_STATUSES:
+            location = _first_remote_header(response.headers, "Location")
+            if not location or redirect_count >= 5:
+                raise ClipError("Downloading a remote image failed.")
+            try:
+                current = normalize_url(urljoin(approved.url, location))
+            except ClipError as exc:
+                raise ClipError(_REMOTE_FETCH_POLICY_MESSAGE) from exc
+            continue
+        if response.status_code < 200 or response.status_code >= 300:
+            raise ClipError(
+                f"Downloading a remote image failed with HTTP {response.status_code}."
+            )
+        content_type = (
+            _first_remote_header(response.headers, "Content-Type") or ""
+        ).split(";", 1)[0].strip().lower()
+        if not content_type.startswith("image/"):
+            raise ClipError("A remote image URL returned non-image content.")
+        return approved.url, content_type, response.body
+    raise ClipError("Downloading a remote image failed.")
+
+
 def _normalize_text(value: str) -> str:
     return value.replace("\r\n", "\n").replace("\r", "\n")
 
@@ -267,10 +622,10 @@ def _content_hash(markdown: str) -> str:
 
 
 _DANGEROUS_SCHEMES = r"(?:javascript|vbscript|file|obsidian|data)"
+_INLINE_CODE_SPAN = re.compile(r"(`+)([^`\n]*?)\1")
 
 
-def sanitize_markdown(markdown: str) -> str:
-    text = _normalize_text(markdown)
+def _sanitize_active_markdown_segment(text: str) -> str:
     text = re.sub(r"(?s)<!--.*?-->", "", text)
     dangerous_tags = r"script|iframe|object|embed|form|input|button|textarea|select|option|style|link|meta|base|svg|math"
     text = re.sub(
@@ -291,6 +646,97 @@ def sanitize_markdown(markdown: str) -> str:
         text,
     )
     return text.replace("[[", r"\[\[")
+
+
+def _sanitize_text_preserving_inline_code(text: str) -> str:
+    pieces: list[str] = []
+    cursor = 0
+    for match in _INLINE_CODE_SPAN.finditer(text):
+        pieces.append(_sanitize_active_markdown_segment(text[cursor:match.start()]))
+        pieces.append(match.group(0))
+        cursor = match.end()
+    pieces.append(_sanitize_active_markdown_segment(text[cursor:]))
+    return "".join(pieces)
+
+
+def _scan_remote_images_in_plain_text(text: str, seen: set[str], found: list[str]) -> None:
+    cursor = 0
+    for inline_code in _INLINE_CODE_SPAN.finditer(text):
+        _collect_remote_images(text[cursor:inline_code.start()], seen, found)
+        cursor = inline_code.end()
+    _collect_remote_images(text[cursor:], seen, found)
+
+
+def _is_indented_code_line(line: str, leading_spaces: int | None = None) -> bool:
+    if line.startswith("\t"):
+        return True
+    if leading_spaces is None:
+        leading_spaces = len(line) - len(line.lstrip(" "))
+    return leading_spaces >= 4 and bool(line.strip())
+
+
+def _collect_remote_images(text: str, seen: set[str], found: list[str]) -> None:
+    for match in _REMOTE_MARKDOWN_IMAGE.finditer(text):
+        normalized_url = normalize_url(match.group(1))
+        if normalized_url in seen:
+            continue
+        seen.add(normalized_url)
+        found.append(normalized_url)
+
+
+def sanitize_markdown(markdown: str) -> str:
+    text = _normalize_text(markdown)
+    result: list[str] = []
+    plain: list[str] = []
+    fenced: list[str] = []
+    in_fence = False
+    fence_char = ""
+    fence_length = 0
+
+    for line in text.splitlines(keepends=True):
+        leading_spaces = len(line) - len(line.lstrip(" "))
+        content = line[leading_spaces:]
+        fence_match = None
+        if leading_spaces <= 3:
+            fence_match = re.match(r"(`{3,}|~{3,})", content)
+
+        if in_fence:
+            fenced.append(line)
+            if fence_match:
+                marker = fence_match.group(1)
+                if marker[0] == fence_char and len(marker) >= fence_length:
+                    result.append("".join(fenced))
+                    fenced = []
+                    in_fence = False
+                    fence_char = ""
+                    fence_length = 0
+            continue
+
+        if fence_match:
+            if plain:
+                result.append(_sanitize_text_preserving_inline_code("".join(plain)))
+                plain = []
+            marker = fence_match.group(1)
+            in_fence = True
+            fence_char = marker[0]
+            fence_length = len(marker)
+            fenced = [line]
+            continue
+
+        if _is_indented_code_line(line, leading_spaces):
+            if plain:
+                result.append(_sanitize_text_preserving_inline_code("".join(plain)))
+                plain = []
+            result.append(line)
+            continue
+
+        plain.append(line)
+
+    if plain:
+        result.append(_sanitize_text_preserving_inline_code("".join(plain)))
+    if fenced:
+        result.append("".join(fenced))
+    return "".join(result)
 
 
 def _contains_markdown_h1(markdown: str) -> bool:
@@ -352,14 +798,27 @@ def _managed_markdown(title: str, markdown: str) -> str:
     return f"# {cleaned_title}\n\n{cleaned_markdown}"
 
 
-def render_note(data: Mapping[str, object], created: str | None = None) -> str:
+def render_note(
+    data: Mapping[str, object],
+    created: str | None = None,
+    *,
+    content_markdown: str | None = None,
+    image_mode: str = "remote",
+) -> str:
     """Render extractor data as normalized Markdown with YAML frontmatter."""
+    if image_mode not in {"remote", "local"}:
+        raise ClipError("The image save mode is invalid.")
     checked = _validate_success_payload(data)
     timestamp = created or datetime.now(timezone.utc).isoformat(timespec="seconds")
     source = normalize_url(str(checked["canonicalUrl"] or checked["url"]))
     fetched_url = normalize_url(str(checked["url"]))
-    markdown = sanitize_markdown(str(checked["markdown"])).rstrip("\n")
-    managed_markdown = _managed_markdown(str(checked["title"]), markdown)
+    source_markdown = sanitize_markdown(str(checked["markdown"])).rstrip("\n")
+    effective_markdown = (
+        _normalize_text(content_markdown).rstrip("\n")
+        if content_markdown is not None
+        else source_markdown
+    )
+    managed_markdown = _managed_markdown(str(checked["title"]), effective_markdown)
     metadata = {
         "title": checked["title"],
         "url": source,
@@ -376,7 +835,9 @@ def render_note(data: Mapping[str, object], created: str | None = None) -> str:
         "category": "Inbox",
         "word_count": checked["wordCount"],
         "webclip_id": "sha256:" + _url_hash(source),
-        "content_hash": "sha256:" + _content_hash(markdown),
+        "source_content_hash": "sha256:" + _content_hash(source_markdown),
+        "content_hash": "sha256:" + _content_hash(effective_markdown),
+        "image_mode": image_mode,
         "published": checked["published"],
         "created": timestamp,
     }
@@ -398,6 +859,278 @@ def render_note(data: Mapping[str, object], created: str | None = None) -> str:
 
 def _url_hash(url: str) -> str:
     return hashlib.sha256(normalize_url(url).encode("utf-8")).hexdigest()
+
+
+def find_remote_images(markdown: str) -> list[str]:
+    normalized = _normalize_text(markdown)
+    found: list[str] = []
+    seen: set[str] = set()
+    plain: list[str] = []
+    in_fence = False
+    fence_char = ""
+    fence_length = 0
+
+    for line in normalized.splitlines(keepends=True):
+        leading_spaces = len(line) - len(line.lstrip(" "))
+        content = line[leading_spaces:]
+        fence_match = None
+        if leading_spaces <= 3:
+            fence_match = re.match(r"(`{3,}|~{3,})", content)
+
+        if in_fence:
+            if fence_match:
+                marker = fence_match.group(1)
+                if marker[0] == fence_char and len(marker) >= fence_length:
+                    in_fence = False
+                    fence_char = ""
+                    fence_length = 0
+            continue
+
+        if fence_match:
+            if plain:
+                _scan_remote_images_in_plain_text("".join(plain), seen, found)
+                plain = []
+            marker = fence_match.group(1)
+            in_fence = True
+            fence_char = marker[0]
+            fence_length = len(marker)
+            continue
+
+        if _is_indented_code_line(line, leading_spaces):
+            if plain:
+                _scan_remote_images_in_plain_text("".join(plain), seen, found)
+                plain = []
+            continue
+
+        plain.append(line)
+
+    if plain:
+        _scan_remote_images_in_plain_text("".join(plain), seen, found)
+    return found
+
+
+def github_blob_url(origin_url: str, branch: str, relative_path: str) -> str | None:
+    remote = origin_url.strip()
+    match = _GITHUB_REMOTE_HTTPS.fullmatch(remote) or _GITHUB_REMOTE_SSH.fullmatch(remote)
+    if match is None:
+        return None
+    owner, repo = match.groups()
+    return (
+        f"https://github.com/{owner}/{repo}/blob/{quote(branch, safe='')}/"
+        f"{quote(relative_path, safe='/')}"
+    )
+
+
+def _pending_root(env: Mapping[str, str] | None) -> Path:
+    raw = (
+        env.get("WEB_TO_OBSIDIAN_PENDING_ROOT")
+        if env is not None and "WEB_TO_OBSIDIAN_PENDING_ROOT" in env
+        else "~/.hermes/workspace/cache/url-to-obsidian/pending-state"
+    )
+    return Path(raw).expanduser().resolve()
+
+
+def _active_pending_pointer(root: Path) -> Path:
+    return root / "active.json"
+
+
+def _pending_state_path(root: Path, pending_id: str) -> Path:
+    return root / f"{pending_id}.json"
+
+
+def _write_json(path: Path, payload: Mapping[str, object]) -> None:
+    atomic_write(path, json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+
+
+def _clear_pending(root: Path, pending_id: str | None = None) -> None:
+    pointer = _active_pending_pointer(root)
+    if pending_id is None and pointer.is_file():
+        try:
+            data = json.loads(pointer.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                pending_id = data.get("pending_id") if isinstance(data.get("pending_id"), str) else None
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            pending_id = None
+    candidates = [pointer]
+    if pending_id:
+        candidates.append(_pending_state_path(root, pending_id))
+    for candidate in candidates:
+        try:
+            candidate.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise ClipError("Could not clear the pending image confirmation state.") from exc
+
+
+def _load_pending_state(root: Path) -> PendingClipState:
+    pointer = _active_pending_pointer(root)
+    if not pointer.is_file():
+        raise ClipError("No pending image confirmation exists.")
+    try:
+        active = json.loads(pointer.read_text(encoding="utf-8"))
+        pending_id = active.get("pending_id")
+    except (OSError, UnicodeError, json.JSONDecodeError, AttributeError) as exc:
+        raise ClipError("The pending image confirmation state is invalid.") from exc
+    if not isinstance(pending_id, str) or not pending_id:
+        raise ClipError("The pending image confirmation state is invalid.")
+    path = _pending_state_path(root, pending_id)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        _clear_pending(root, pending_id)
+        raise ClipError("No pending image confirmation exists.") from exc
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ClipError("The pending image confirmation state is invalid.") from exc
+    if not isinstance(payload, dict):
+        raise ClipError("The pending image confirmation state is invalid.")
+    required = {
+        "pending_id": str,
+        "created_at": str,
+        "expires_at": str,
+        "article": dict,
+        "refresh": bool,
+        "no_git": bool,
+        "vault": str,
+        "destination": str,
+        "images": str,
+        "sync_branch": str,
+    }
+    for field, expected_type in required.items():
+        value = payload.get(field)
+        if not isinstance(value, expected_type):
+            raise ClipError("The pending image confirmation state is invalid.")
+    expires_at = datetime.fromisoformat(str(payload["expires_at"]))
+    if datetime.now(timezone.utc) >= expires_at:
+        _clear_pending(root, pending_id)
+        raise ClipError("The pending image confirmation expired; please run /clip again.")
+    return PendingClipState(
+        pending_id=str(payload["pending_id"]),
+        created_at=str(payload["created_at"]),
+        expires_at=str(payload["expires_at"]),
+        article=dict(payload["article"]),
+        refresh=bool(payload["refresh"]),
+        no_git=bool(payload["no_git"]),
+        vault=str(payload["vault"]),
+        destination=str(payload["destination"]),
+        images=str(payload["images"]),
+        sync_branch=str(payload["sync_branch"]),
+    )
+
+
+def _store_pending_state(root: Path, state: PendingClipState) -> None:
+    try:
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except OSError as exc:
+        raise ClipError("Could not create the pending image confirmation directory.") from exc
+    try:
+        if root.is_symlink():
+            raise ClipError("Refusing to use a symbolic-link pending state directory.")
+        os.chmod(root, 0o700)
+    except OSError as exc:
+        raise ClipError("Could not secure the pending image confirmation directory.") from exc
+    pointer = _active_pending_pointer(root)
+    if pointer.exists():
+        existing = _load_pending_state(root)
+        raise ClipError(
+            f"Another clipped article ('{existing.article.get('title', 'unknown')}') is already waiting for yes/no confirmation."
+        )
+    _write_json(_pending_state_path(root, state.pending_id), state.to_json())
+    _write_json(pointer, {"pending_id": state.pending_id})
+
+
+def _slugify_image_dir(note_path: Path, url: str) -> str:
+    ascii_text = (
+        unicodedata.normalize("NFKD", note_path.stem).encode("ascii", "ignore").decode("ascii")
+    )
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "-", ascii_text).strip("-").lower()
+    return cleaned or _url_hash(url)[:12]
+
+
+def download_remote_image(
+    url: str,
+    destination_dir: Path,
+    index: int,
+    *,
+    resolver=socket.getaddrinfo,
+    request_impl=None,
+) -> Path:
+    final_url, content_type, payload = _fetch_remote_image(
+        url,
+        resolver=resolver,
+        request_impl=request_impl,
+    )
+    suffix = Path(urlsplit(final_url).path).suffix.lower()
+    if not re.fullmatch(r"\.[A-Za-z0-9]{1,8}", suffix or ""):
+        subtype = content_type.removeprefix("image/")
+        suffix = ".jpg" if subtype == "jpeg" else f".{subtype or 'img'}"
+    base_name = Path(urlsplit(final_url).path).stem or "image"
+    base_name = re.sub(r"[^A-Za-z0-9._-]+", "-", base_name).strip("-._") or "image"
+    file_name = f"{index:02d}-{base_name}{suffix}"
+    target = destination_dir / file_name
+    atomic_write_bytes(target, payload)
+    return target
+
+
+def _rewrite_remote_image_references(markdown: str, replacements: Mapping[str, str]) -> str:
+    def replace_markdown(match: re.Match[str]) -> str:
+        url = normalize_url(match.group(1))
+        replacement = replacements.get(url)
+        return match.group(0).replace(match.group(1), replacement, 1) if replacement else match.group(0)
+
+    return _REMOTE_MARKDOWN_IMAGE.sub(replace_markdown, markdown)
+
+
+def _cleanup_localized_files(paths: Sequence[Path], *, images_root: Path) -> None:
+    root = images_root.resolve()
+    resolved_paths = sorted({path.resolve() for path in paths}, key=lambda path: len(path.parents), reverse=True)
+    for path in resolved_paths:
+        try:
+            _require_within(path, root, "Generated image path escaped the configured image directory.")
+        except ClipError:
+            continue
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            continue
+        parent = path.parent
+        while parent != root:
+            try:
+                parent.rmdir()
+            except OSError:
+                break
+            parent = parent.parent
+
+
+def _localize_images(
+    markdown: str,
+    title: str,
+    source_url: str,
+    images_root: Path,
+    note_path: Path,
+) -> tuple[str, list[Path]]:
+    remote_images = find_remote_images(markdown)
+    if not remote_images:
+        return markdown, []
+    article_dir = images_root / _slugify_image_dir(note_path, source_url)
+    try:
+        article_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ClipError("Could not create the configured image directory.") from exc
+    replacements: dict[str, str] = {}
+    generated_paths: list[Path] = []
+    try:
+        for index, image_url in enumerate(remote_images, start=1):
+            downloaded = download_remote_image(image_url, article_dir, index)
+            relative = os.path.relpath(downloaded, start=note_path.parent)
+            replacements[image_url] = Path(relative).as_posix()
+            generated_paths.append(downloaded)
+    except Exception:
+        _cleanup_localized_files(generated_paths, images_root=images_root)
+        raise
+    return _rewrite_remote_image_references(markdown, replacements), generated_paths
 
 
 def _truncate_utf8(value: str, byte_limit: int) -> str:
@@ -579,6 +1312,51 @@ def atomic_write(target: Path, content: str) -> None:
         raise
     except OSError as exc:
         raise ClipError("Could not safely write the clipped note.") from exc
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+
+
+def atomic_write_bytes(target: Path, content: bytes) -> None:
+    """Durably replace a binary asset using a temporary file in the same directory."""
+    parent = target.parent.resolve()
+    if not parent.is_dir():
+        raise ClipError("The configured clip destination is unavailable.")
+    if target.is_symlink():
+        raise ClipError("Refusing to replace a symbolic-link note.")
+    _require_within(target.resolve(), parent, "Generated note path escaped its destination.")
+
+    fd = -1
+    temporary: str | None = None
+    try:
+        fd, temporary = tempfile.mkstemp(prefix=".clip-", suffix=".tmp", dir=parent)
+        with os.fdopen(fd, "wb") as handle:
+            fd = -1
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+        temporary = None
+        try:
+            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            directory_fd = os.open(parent, flags)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError:
+            pass
+    except ClipError:
+        raise
+    except OSError as exc:
+        raise ClipError("Could not safely write the clipped asset.") from exc
     finally:
         if fd >= 0:
             os.close(fd)
@@ -962,8 +1740,6 @@ class GitSync:
         if branch_result.returncode != 0:
             raise ClipError("Git protection requires an active branch.")
         branch = _decode_output(branch_result).strip()
-        if branch.lower() in _PROTECTED_BRANCHES:
-            raise ClipError("Refusing to clip on a protected core branch.")
         if expected_branch is not None and branch != expected_branch:
             raise ClipError("The Vault is not on the configured clip sync branch.")
 
@@ -1088,7 +1864,7 @@ class GitSync:
         committed_paths = {
             part for part in _decode_output(committed).split("\0") if part
         }
-        if committed_paths != expected or post_status.stdout:
+        if committed_paths != changed or post_status.stdout:
             return GitOutcome("committed_unverified", "not_attempted")
         push = self._git(self.repo_root, "push", "-u", "origin", "HEAD")
         if push.returncode != 0:
@@ -1114,31 +1890,28 @@ class ClipService:
         self.plugin_root = plugin_root.resolve()
         self.env = env
 
-    def run(self, raw_args: str) -> ClipResult:
-        options = parse_clip_args(raw_args)
-        config = (
+    def _load_config(self) -> ClipConfig:
+        return (
             ClipConfig.from_env(self.env)
             if self.env is not None
             else ClipConfig.from_file(self.plugin_root / "config.toml")
         )
+
+    def run(self, raw_args: str) -> ClipResult | PendingClipResult:
+        options = parse_clip_args(raw_args)
+        config = self._load_config()
         with VaultLock(config.lock_file):
             return self._run_locked(options, config)
 
-    def _run_locked(self, options: ClipOptions, config: ClipConfig) -> ClipResult:
-        git_sync = (
-            None
-            if options.no_git
-            else GitSync.preflight(config.vault, config.sync_branch)
-        )
+    def resume_pending(self, decision: str) -> ClipResult:
+        normalized = decision.strip().lower()
+        if normalized not in {"yes", "no"}:
+            raise ClipError("The resume tool requires decision=yes or decision=no.")
+        config = self._load_config()
+        with VaultLock(config.lock_file):
+            return self._resume_locked(config, normalized)
 
-        article = run_extractor(
-            self.plugin_root, options.url, no_browser=options.no_browser
-        )
-        captured_at = datetime.now(timezone.utc)
-        note = render_note(article, created=captured_at.isoformat(timespec="seconds"))
-        _ensure_no_secret_markers(note)
-        source = str(article["canonicalUrl"] or article["url"])
-
+    def _ensure_destination(self, config: ClipConfig) -> Path:
         try:
             config.destination.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -1149,20 +1922,169 @@ class ClipService:
             config.vault,
             "Configured destination escaped the Obsidian vault.",
         )
-        target = choose_target(
+        return destination
+
+    def _target_for(self, config: ClipConfig, article: Mapping[str, object], capture_date: str) -> Path:
+        destination = self._ensure_destination(config)
+        source = str(article["canonicalUrl"] or article["url"])
+        return choose_target(
             destination,
             str(article["title"]),
             source,
-            capture_date=captured_at.date().isoformat(),
+            capture_date=capture_date,
         )
-        write_managed_note(target, note, refresh=options.refresh)
 
-        if git_sync is None:
-            outcome = GitOutcome("disabled", "disabled")
-        else:
-            outcome = git_sync.finalize([target])
+    def _result_with_github_url(
+        self,
+        config: ClipConfig,
+        target: Path,
+        outcome: GitOutcome,
+        git_sync: GitSync | None,
+    ) -> ClipResult:
         relative_path = target.resolve().relative_to(config.vault).as_posix()
-        return ClipResult(relative_path, outcome.commit_state, outcome.push_state)
+        github_url = None
+        if git_sync is not None:
+            remote = GitSync._git(git_sync.repo_root, "remote", "get-url", "origin")
+            if remote.returncode == 0:
+                github_url = github_blob_url(
+                    _decode_output(remote).strip(),
+                    git_sync.branch,
+                    relative_path,
+                )
+        return ClipResult(relative_path, outcome.commit_state, outcome.push_state, github_url)
+
+    def _persist_article(
+        self,
+        *,
+        config: ClipConfig,
+        article: Mapping[str, object],
+        captured_at: datetime,
+        refresh: bool,
+        git_sync: GitSync | None,
+        content_markdown: str,
+        image_mode: str,
+        generated_paths: Sequence[Path] = (),
+    ) -> ClipResult:
+        source = str(article["canonicalUrl"] or article["url"])
+        target = self._target_for(config, article, captured_at.date().isoformat())
+        note = render_note(
+            article,
+            created=captured_at.isoformat(timespec="seconds"),
+            content_markdown=content_markdown,
+            image_mode=image_mode,
+        )
+        _ensure_no_secret_markers(note)
+        write_managed_note(target, note, refresh=refresh)
+        outcome = (
+            GitOutcome("disabled", "disabled")
+            if git_sync is None
+            else git_sync.finalize([target, *generated_paths])
+        )
+        return self._result_with_github_url(config, target, outcome, git_sync)
+
+    def _run_locked(
+        self, options: ClipOptions, config: ClipConfig
+    ) -> ClipResult | PendingClipResult:
+        git_sync = (
+            None
+            if options.no_git
+            else GitSync.preflight(config.vault, config.sync_branch)
+        )
+        article = _validate_success_payload(
+            run_extractor(self.plugin_root, options.url, no_browser=options.no_browser)
+        )
+        captured_at = datetime.now(timezone.utc)
+        source_markdown = sanitize_markdown(str(article["markdown"])).rstrip("\n")
+        remote_images = find_remote_images(source_markdown)
+        if options.save_images == "ask" and remote_images:
+            pending_id = _url_hash(str(article["canonicalUrl"] or article["url"]))[:16]
+            state = PendingClipState(
+                pending_id=pending_id,
+                created_at=captured_at.isoformat(timespec="seconds"),
+                expires_at=(
+                    captured_at.replace(microsecond=0)
+                    + timedelta(seconds=PENDING_TTL_SECONDS)
+                ).isoformat(),
+                article=article,
+                refresh=options.refresh,
+                no_git=options.no_git,
+                vault=str(config.vault),
+                destination=str(config.destination),
+                images=str(config.images),
+                sync_branch=config.sync_branch,
+            )
+            _store_pending_state(_pending_root(self.env), state)
+            return PendingClipResult(str(article["title"]), len(remote_images))
+        content_markdown = source_markdown
+        image_mode = "remote"
+        generated_paths: list[Path] = []
+        if options.save_images == "yes" and remote_images:
+            target = self._target_for(config, article, captured_at.date().isoformat())
+            content_markdown, generated_paths = _localize_images(
+                source_markdown,
+                str(article["title"]),
+                str(article["canonicalUrl"] or article["url"]),
+                config.images.resolve(),
+                target,
+            )
+            image_mode = "local"
+        try:
+            return self._persist_article(
+                config=config,
+                article=article,
+                captured_at=captured_at,
+                refresh=options.refresh,
+                git_sync=git_sync,
+                content_markdown=content_markdown,
+                image_mode=image_mode,
+                generated_paths=generated_paths,
+            )
+        except ClipError:
+            if generated_paths:
+                _cleanup_localized_files(generated_paths, images_root=config.images.resolve())
+            raise
+
+    def _resume_locked(self, config: ClipConfig, decision: str) -> ClipResult:
+        pending_root = _pending_root(self.env)
+        state = _load_pending_state(pending_root)
+        if not state.matches_config(config):
+            raise ClipError(
+                "The pending image confirmation belongs to a different vault or clip configuration."
+            )
+        article = _validate_success_payload(state.article)
+        git_sync = None if state.no_git else GitSync.preflight(config.vault, config.sync_branch)
+        captured_at = datetime.fromisoformat(state.created_at)
+        source_markdown = sanitize_markdown(str(article["markdown"])).rstrip("\n")
+        content_markdown = source_markdown
+        image_mode = "remote"
+        generated_paths: list[Path] = []
+        if decision == "yes":
+            target = self._target_for(config, article, captured_at.date().isoformat())
+            content_markdown, generated_paths = _localize_images(
+                source_markdown,
+                str(article["title"]),
+                str(article["canonicalUrl"] or article["url"]),
+                config.images.resolve(),
+                target,
+            )
+            image_mode = "local"
+        try:
+            result = self._persist_article(
+                config=config,
+                article=article,
+                captured_at=captured_at,
+                refresh=state.refresh,
+                git_sync=git_sync,
+                content_markdown=content_markdown,
+                image_mode=image_mode,
+                generated_paths=generated_paths,
+            )
+        except ClipError:
+            if generated_paths:
+                _cleanup_localized_files(generated_paths, images_root=config.images.resolve())
+            raise
+        _clear_pending(pending_root, state.pending_id)
+        return result
 
 
 def build_handler(plugin_root: Path):
@@ -1176,6 +2098,29 @@ def build_handler(plugin_root: Path):
             return f"Clip failed: {exc}"
         except BaseException:
             # The slash-command boundary must never leak stacks, stderr, or secrets.
+            return "Clip failed due to an unexpected local error."
+
+    return handle
+
+
+def build_resume_tool(plugin_root: Path):
+    service = ClipService(plugin_root)
+
+    def handle(
+        arguments: Mapping[str, object] | None = None,
+        decision: str | None = None,
+        **_: object,
+    ) -> str:
+        chosen = decision
+        if chosen is None and isinstance(arguments, Mapping):
+            raw = arguments.get("decision")
+            if isinstance(raw, str):
+                chosen = raw
+        try:
+            return service.resume_pending(chosen or "").user_message()
+        except ClipError as exc:
+            return f"Clip failed: {exc}"
+        except BaseException:
             return "Clip failed due to an unexpected local error."
 
     return handle

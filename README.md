@@ -7,7 +7,9 @@ Obsidian Vault and optionally performs guarded Git synchronization.
 
 - Static extraction with Defuddle.
 - Playwright Chromium fallback for weak static pages.
-- Remote HTTPS image references are preserved; images are not downloaded.
+- Remote HTTP(S) image references can either stay remote or be downloaded into the Vault.
+- The default `/clip <url>` flow asks for a follow-up yes/no decision only when the
+  final sanitized Markdown still contains remote images.
 - Login-gated pages, cookies, credentials, and password-manager integration are
   intentionally unsupported.
 - Linux/WSL only: the implementation uses `fcntl` locks and POSIX process groups.
@@ -47,20 +49,23 @@ Review `config.toml` before restarting the Gateway.
 vault = "~/obsidian/shijistar"
 destination = "Inbox"
 images = "images"
-sync_branch = "feature/web-to-obsidian-clip"
+sync_branch = "master"
 # lock_file = "~/.local/state/web-to-obsidian/vault.lock"
 ```
 
 The lock must be outside the Vault. When `config.toml` is absent, the legacy
 `WEB_TO_OBSIDIAN_VAULT`, `WEB_TO_OBSIDIAN_DEST`,
-`WEB_TO_OBSIDIAN_IMAGES`, `WEB_TO_OBSIDIAN_SYNC_BRANCH`, and
-`WEB_TO_OBSIDIAN_LOCK_FILE` variables are accepted as a fallback. These values
-are never forwarded to the untrusted extractor process.
+`WEB_TO_OBSIDIAN_IMAGES`, `WEB_TO_OBSIDIAN_SYNC_BRANCH`,
+`WEB_TO_OBSIDIAN_LOCK_FILE`, and `WEB_TO_OBSIDIAN_PENDING_ROOT` variables are
+accepted as a fallback. The pending state defaults to
+`~/.hermes/workspace/cache/url-to-obsidian/pending-state` and supports only one
+active yes/no confirmation at a time. These values are never forwarded to the
+untrusted extractor process.
 
 ## Usage
 
 ```text
-/clip <url> [--refresh] [--no-browser] [--no-git]
+/clip <url> [--refresh] [--no-browser] [--no-git] [--save-images yes|no|ask]
 ```
 
 - Exactly one public `http://` or `https://` URL is accepted.
@@ -68,6 +73,14 @@ are never forwarded to the untrusted extractor process.
   manual section.
 - `--no-browser` disables Playwright fallback.
 - `--no-git` disables Git preflight, commit, and push for that invocation.
+- `--save-images yes` downloads remote Markdown/HTML image references into
+  `images/<article-slug>/...` before saving the note.
+- `--save-images no` preserves remote image URLs and saves immediately.
+- Omitting `--save-images` behaves as `ask`: if the final sanitized Markdown has
+  remote `http/https` image references, `/clip` stores one pending confirmation
+  and waits for a plain `yes` or `no` reply via the registered
+  `web_to_obsidian_resume_pending` tool. If no remote images remain, the note is
+  saved immediately.
 
 ## Network and content safety
 
@@ -101,15 +114,17 @@ are never forwarded to the untrusted extractor process.
   `description`, `keywords`, `tags`, `original_url`, `original_host`,
   optional `fetched_url` (when the request URL differs from the canonical
   article URL), `extraction_method`, `status`, `category`, `word_count`,
-  `webclip_id`, `content_hash`, `published`, and `created`.
+  `webclip_id`, `source_content_hash`, `content_hash`, `image_mode`,
+  `published`, and `created`.
 - Managed note content preserves an extracted Markdown H1 when present and
   injects `# <title>` only when the extracted article has no Markdown H1.
 - Existing notes are matched by normalized `url`, `original_url`, or legacy
   `source` frontmatter so older notes remain refreshable without duplication.
   That compatibility is recognition-only; metadata is rewritten to the new
   field names when a note is refreshed, not by a background migration.
-- Same source + same content is a no-op. Changed content is rejected unless
-  `--refresh` is explicit. Refresh preserves text inside the manual boundary.
+- Same managed source + same managed content is a no-op. Changed content is
+  rejected unless `--refresh` is explicit. Refresh preserves text inside the
+  manual boundary.
 - Frontmatter is fully managed output. User-added frontmatter keys are not part
   of the preserved manual region and may trigger a refresh requirement or be
   overwritten on refresh.
@@ -119,7 +134,7 @@ are never forwarded to the untrusted extractor process.
 
 With Git enabled, `/clip` requires:
 
-1. the configured sync branch;
+1. the configured sync branch (the shipped default is `master`);
 2. no merge/rebase state;
 3. a completely clean worktree, including untracked files;
 4. an `origin` remote and successful `fetch --prune`;
@@ -130,7 +145,9 @@ verifies the staged set, commits with the fixed message `clip: save web article`
 then verifies the actual commit path set and clean worktree before pushing `HEAD`
 normally. It never force-pushes or rewrites public history.
 If commit fails, the note remains untracked for recovery. If push fails, the
-local commit remains for a later manual retry.
+local commit remains for a later manual retry. When the `origin` remote points at
+GitHub, successful saves include the `blob/<branch>/...` preview URL in the user
+response.
 
 ## Tests
 
