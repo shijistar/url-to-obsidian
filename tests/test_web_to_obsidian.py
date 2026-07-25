@@ -2,6 +2,7 @@ import io
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -36,6 +37,15 @@ class ArgsTests(unittest.TestCase):
         self.assertEqual(parsed.url, "https://example.com/a?x=1&y=2")
         self.assertTrue(parsed.no_browser)
         self.assertTrue(parsed.no_git)
+        self.assertEqual(parsed.save_images, "ask")
+
+    def test_accepts_save_images_modes(self):
+        for mode in ("yes", "no", "ask"):
+            with self.subTest(mode=mode):
+                parsed = clip.parse_clip_args(
+                    f"https://example.com/article --save-images {mode}"
+                )
+                self.assertEqual(parsed.save_images, mode)
 
     def test_rejects_unknown_option_extra_url_and_non_http_url(self):
         invalid = (
@@ -43,6 +53,7 @@ class ArgsTests(unittest.TestCase):
             "https://example.com https://other.example",
             "file:///etc/passwd",
             "",
+            "https://example.com --save-images maybe",
         )
         for raw in invalid:
             with self.subTest(raw=raw), self.assertRaises(clip.ClipError):
@@ -77,13 +88,13 @@ class ConfigAndFilenameTests(unittest.TestCase):
                 f'vault = "{vault}"\n'
                 'destination = "Inbox"\n'
                 'images = "images"\n'
-                'sync_branch = "feature/web-to-obsidian-clip"\n'
+                'sync_branch = "master"\n'
                 f'lock_file = "{root / "vault.lock"}"\n',
                 encoding="utf-8",
             )
             config = clip.ClipConfig.from_file(config_path)
             self.assertEqual(config.destination, vault / "Inbox")
-            self.assertEqual(config.sync_branch, "feature/web-to-obsidian-clip")
+            self.assertEqual(config.sync_branch, "master")
 
             with self.assertRaisesRegex(clip.ClipError, "lock file"):
                 clip.ClipConfig.from_env(
@@ -156,7 +167,9 @@ class RenderingTests(unittest.TestCase):
                 "category",
                 "word_count",
                 "webclip_id",
+                "source_content_hash",
                 "content_hash",
+                "image_mode",
                 "published",
                 "created",
             ],
@@ -170,6 +183,8 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(parsed["created"], "2026-07-23T12:00:00+00:00")
         self.assertEqual(parsed["extraction_method"], "readability")
         self.assertEqual(parsed["tags"], ["web-clip"])
+        self.assertEqual(parsed["image_mode"], "remote")
+        self.assertEqual(parsed["source_content_hash"], parsed["content_hash"])
         self.assertNotIn("source", parsed)
         self.assertNotIn("source_host", parsed)
         self.assertEqual(note.count("\n---\n"), 1)
@@ -254,12 +269,88 @@ class RenderingTests(unittest.TestCase):
                 "category",
                 "word_count",
                 "webclip_id",
+                "source_content_hash",
                 "content_hash",
+                "image_mode",
                 "published",
                 "created",
             ],
         )
         self.assertEqual(parsed["fetched_url"], "https://example.com/from-redirect")
+
+
+class ImageWorkflowHelpersTests(unittest.TestCase):
+    def test_detects_remote_images_only_from_native_markdown_image_syntax(self):
+        markdown = (
+            "![one](https://cdn.example/a.png)\n"
+            "<img src=\"https://cdn.example/b.jpeg\" alt=\"two\">\n"
+            "![local](images/a.png)\n"
+            "[link](https://cdn.example/not-an-image)\n"
+        )
+        self.assertEqual(
+            clip.find_remote_images(markdown),
+            ["https://cdn.example/a.png"],
+        )
+
+    def test_sanitize_markdown_keeps_html_images_out_of_remote_detection(self):
+        sanitized = clip.sanitize_markdown(
+            '<p>Lead</p><img src="https://cdn.example/hero.png" alt="Hero image">'
+        )
+        self.assertNotIn("![Hero image](https://cdn.example/hero.png)", sanitized)
+        self.assertIn('&lt;img src="https://cdn.example/hero.png" alt="Hero image">', sanitized)
+        self.assertEqual(clip.find_remote_images(sanitized), [])
+
+    def test_localize_images_preserves_date_prefix_in_note_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            images_root = root / "images"
+            inbox = root / "Inbox"
+            inbox.mkdir()
+            note_one = inbox / "2026-07-25-Same Title.md"
+            note_two = inbox / "2026-07-25-Same Title-deadbeef.md"
+            payloads = iter((b"first-image", b"second-image"))
+
+            def fake_download(url: str, destination_dir: Path, index: int) -> Path:
+                self.assertEqual(url, "https://cdn.example/image.png")
+                destination_dir.mkdir(parents=True, exist_ok=True)
+                target = destination_dir / f"{index:02d}-image.png"
+                target.write_bytes(next(payloads))
+                return target
+
+            markdown = "![x](https://cdn.example/image.png)\n"
+            with mock.patch.object(clip, "download_remote_image", side_effect=fake_download):
+                rewritten_one, paths_one = clip._localize_images(
+                    markdown,
+                    "Same Title",
+                    "https://example.com/one",
+                    images_root,
+                    note_one,
+                )
+                rewritten_two, paths_two = clip._localize_images(
+                    markdown,
+                    "Same Title",
+                    "https://example.com/two",
+                    images_root,
+                    note_two,
+                )
+
+            self.assertEqual(paths_one[0].parent.name, "2026-07-25-same-title")
+            self.assertEqual(paths_two[0].parent.name, "2026-07-25-same-title-deadbeef")
+            self.assertNotEqual(paths_one[0], paths_two[0])
+            self.assertEqual(paths_one[0].read_bytes(), b"first-image")
+            self.assertEqual(paths_two[0].read_bytes(), b"second-image")
+            self.assertIn("![x](../images/2026-07-25-same-title/01-image.png)", rewritten_one)
+            self.assertIn("![x](../images/2026-07-25-same-title-deadbeef/01-image.png)", rewritten_two)
+
+    def test_builds_github_blob_url_for_master_branch(self):
+        self.assertEqual(
+            clip.github_blob_url(
+                "https://github.com/shijistar/obsidian.git",
+                "master",
+                "Inbox/2026-07-25-An Article.md",
+            ),
+            "https://github.com/shijistar/obsidian/blob/master/Inbox/2026-07-25-An%20Article.md",
+        )
 
 
 class TargetAndAtomicWriteTests(unittest.TestCase):
@@ -494,14 +585,41 @@ class GitSafetyTests(unittest.TestCase):
                 clip.GitSync.preflight(repo)
             self.assertIn("clean", str(caught.exception).lower())
 
-    def test_refuses_protected_core_branches(self):
-        for branch in ("main", "master", "dev", "develop"):
-            with self.subTest(branch=branch), tempfile.TemporaryDirectory() as tmp:
-                repo = Path(tmp)
-                self._git(repo, "init", "-b", branch)
-                with self.assertRaises(clip.ClipError) as caught:
-                    clip.GitSync.preflight(repo)
-                self.assertIn("protected", str(caught.exception).lower())
+    def test_allows_master_when_configured_branch_is_master(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = root / "remote.git"
+            repo = root / "vault"
+            self._git(root, "init", "--bare", str(remote))
+            self._git(root, "init", "-b", "master", str(repo))
+            self._git(repo, "config", "user.name", "Clip Test")
+            self._git(repo, "config", "user.email", "clip@example.invalid")
+            self._git(repo, "remote", "add", "origin", str(remote))
+            (repo / ".gitkeep").write_text("", encoding="utf-8")
+            self._git(repo, "add", ".gitkeep")
+            self._git(repo, "commit", "-m", "initial")
+            self._git(repo, "push", "-u", "origin", "master")
+
+            sync = clip.GitSync.preflight(repo, expected_branch="master")
+            self.assertEqual(sync.branch, "master")
+
+    def test_rejects_when_vault_is_not_on_configured_branch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = root / "remote.git"
+            repo = root / "vault"
+            self._git(root, "init", "--bare", str(remote))
+            self._git(root, "init", "-b", "feature/clip", str(repo))
+            self._git(repo, "config", "user.name", "Clip Test")
+            self._git(repo, "config", "user.email", "clip@example.invalid")
+            self._git(repo, "remote", "add", "origin", str(remote))
+            (repo / ".gitkeep").write_text("", encoding="utf-8")
+            self._git(repo, "add", ".gitkeep")
+            self._git(repo, "commit", "-m", "initial")
+            self._git(repo, "push", "-u", "origin", "feature/clip")
+
+            with self.assertRaisesRegex(clip.ClipError, "configured clip sync branch"):
+                clip.GitSync.preflight(repo, expected_branch="master")
 
     def test_refuses_cherry_pick_and_revert_states(self):
         for state_name in ("CHERRY_PICK_HEAD", "REVERT_HEAD"):
@@ -599,6 +717,90 @@ class GitSafetyTests(unittest.TestCase):
                 stderr=subprocess.PIPE,
             )
             self.assertNotEqual(remote_branch.returncode, 0)
+
+    def test_finalize_allows_image_only_changes_within_generated_set(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = root / "remote.git"
+            repo = root / "vault"
+            self._git(root, "init", "--bare", str(remote))
+            self._git(root, "init", "-b", "master", str(repo))
+            self._git(repo, "config", "user.name", "Clip Test")
+            self._git(repo, "config", "user.email", "clip@example.invalid")
+            self._git(repo, "remote", "add", "origin", str(remote))
+            (repo / "Inbox").mkdir()
+            (repo / "images" / "2026-07-25-an-article").mkdir(parents=True)
+            note = repo / "Inbox" / "2026-07-25-An Article.md"
+            image = repo / "images" / "2026-07-25-an-article" / "01-image.png"
+            note.write_text("same note\n", encoding="utf-8")
+            image.write_bytes(b"old")
+            self._git(
+                repo,
+                "add",
+                "Inbox/2026-07-25-An Article.md",
+                "images/2026-07-25-an-article/01-image.png",
+            )
+            self._git(repo, "commit", "-m", "initial")
+            self._git(repo, "push", "-u", "origin", "master")
+
+            sync = clip.GitSync.preflight(repo, expected_branch="master")
+            image.write_bytes(b"new-bytes")
+            outcome = sync.finalize([note, image])
+
+            self.assertEqual(outcome.commit_state, "committed")
+            self.assertEqual(outcome.push_state, "pushed")
+            changed = self._git(repo, "show", "--pretty=", "--name-only", "HEAD").stdout
+            self.assertEqual(changed.decode().strip(), "images/2026-07-25-an-article/01-image.png")
+
+
+class RemoteAssetDownloadTests(unittest.TestCase):
+    def test_download_remote_image_rejects_blocked_addresses_before_request(self):
+        def blocked_resolver(host, port, *, type=0, proto=0):
+            return [
+                (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", port)),
+            ]
+
+        request_impl = mock.Mock()
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(clip.ClipError, "blocked by network policy"):
+                clip.download_remote_image(
+                    "http://example.com/image.png",
+                    Path(tmp),
+                    1,
+                    resolver=blocked_resolver,
+                    request_impl=request_impl,
+                )
+        request_impl.assert_not_called()
+
+    def test_download_remote_image_revalidates_redirect_destinations(self):
+        def resolver(host, port, *, type=0, proto=0):
+            if host == "public.example":
+                return [
+                    (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", port)),
+                ]
+            if host == "blocked.example":
+                return [
+                    (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", port)),
+                ]
+            raise AssertionError(f"unexpected host: {host}")
+
+        def request_impl(approved, *, timeout, max_bytes):
+            self.assertEqual(approved.hostname, "public.example")
+            return clip._PinnedRemoteResponse(
+                status_code=302,
+                headers={"Location": "http://blocked.example/image.png"},
+                body=b"",
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(clip.ClipError, "blocked by network policy"):
+                clip.download_remote_image(
+                    "http://public.example/image.png",
+                    Path(tmp),
+                    1,
+                    resolver=resolver,
+                    request_impl=request_impl,
+                )
 
 
 if __name__ == "__main__":

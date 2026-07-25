@@ -12,10 +12,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class FakeContext:
     def __init__(self):
-        self.calls = []
+        self.command_calls = []
+        self.tool_calls = []
 
     def register_command(self, *args, **kwargs):
-        self.calls.append((args, kwargs))
+        self.command_calls.append((args, kwargs))
+
+    def register_tool(self, **kwargs):
+        self.tool_calls.append(kwargs)
 
 
 class PluginRegistrationTests(unittest.TestCase):
@@ -38,15 +42,19 @@ class PluginRegistrationTests(unittest.TestCase):
         context = FakeContext()
         plugin.register(context)
 
-        self.assertEqual(len(context.calls), 1)
-        args, kwargs = context.calls[0]
+        self.assertEqual(len(context.command_calls), 1)
+        args, kwargs = context.command_calls[0]
         self.assertEqual(args, ("clip",))
         self.assertEqual(
             kwargs["args_hint"],
-            "<url> [--refresh] [--no-browser] [--no-git]",
+            "<url> [--refresh] [--no-browser] [--no-git] [--save-images yes|no|ask]",
         )
         self.assertIn("Obsidian", kwargs["description"])
         self.assertTrue(callable(kwargs["handler"]))
+        self.assertEqual(len(context.tool_calls), 1)
+        self.assertEqual(
+            context.tool_calls[0]["name"], "web_to_obsidian_resume_pending"
+        )
 
     def test_handler_never_propagates_and_does_not_expose_exception_details(self):
         with mock.patch.object(clip.ClipService, "run", side_effect=RuntimeError("SECRET stack")):
@@ -59,7 +67,7 @@ class PluginRegistrationTests(unittest.TestCase):
         config = mock.Mock()
         options = clip.ClipOptions("https://example.com", False, False, False)
         config.vault = Path("/tmp/vault")
-        config.sync_branch = "feature/web-to-obsidian-clip"
+        config.sync_branch = "master"
         config.lock_file = Path("/tmp/test-web-to-obsidian.lock")
         order = []
         with (
