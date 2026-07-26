@@ -25,7 +25,6 @@ browser-state/
 state/
 checkpoints/
 data.json
-config.toml
 
 # Vault and local deployment
 vault/
