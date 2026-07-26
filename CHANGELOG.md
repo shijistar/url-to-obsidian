@@ -4,6 +4,16 @@ All notable changes to the url-to-obsidian plugin will be documented in this fil
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] - 2026-07-26
+
+### Added
+- **WeChat article curl fallback** — when Node.js extractor fails for `mp.weixin.qq.com` URLs, automatically falls back to curl-based extraction: fetches raw HTML, parses metadata (title, author, publish time) and body (`js_content` div) via regex, converts HTML to Markdown. No manual intervention needed.
+- `_is_wechat_url()`, `_fetch_wechat_html()`, `_parse_wechat_html()`, `_wechat_html_to_markdown()`, `_count_words()`, `run_extractor_with_fallback()` functions
+- 11 unit tests for WeChat extraction pipeline
+
+### Changed
+- `_run_locked()` now calls `run_extractor_with_fallback()` instead of `run_extractor()` directly
+
 ## [0.2.0] - 2026-07-26
 
 ### Added
