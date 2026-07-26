@@ -20,11 +20,24 @@ Clip web articles to the user's Obsidian vault using the `url-to-obsidian` plugi
 
 ## Plugin Location & Config
 
+The **source repo** is the single source of truth. The installed plugin is a symlink:
+
 ```
-Repository:      ~/.hermes/workspace/repository/url-to-obsidian/
-Installed copy:  ~/.hermes/profiles/<profile>/plugins/web-to-obsidian/
-Config:          <installed>/config.toml
+Source repo:     ~/.hermes/workspace/repository/url-to-obsidian/
+Plugin symlink:  ~/.hermes/profiles/<profile>/plugins/web-to-obsidian/ → source repo
+Skill symlink:   ~/.hermes/profiles/<profile>/skills/productivity/web-clip-to-obsidian/ → source repo/skill/
+Config:          <source repo>/config.toml
 ```
+
+Deploy via symlink (not copies):
+```bash
+ln -s ~/.hermes/workspace/repository/url-to-obsidian \
+      ~/.hermes/profiles/<profile>/plugins/web-to-obsidian
+ln -s ~/.hermes/workspace/repository/url-to-obsidian/skill \
+      ~/.hermes/profiles/<profile>/skills/productivity/web-clip-to-obsidian
+```
+
+`config.toml` lives in the source repo root but is `.gitignored` — each profile keeps its own local config. After symlink setup, copy or create `config.toml` in the source repo root.
 
 Default config:
 ```toml
@@ -105,6 +118,12 @@ print(result.user_message())
 - **GitHub URL**: After successful save, always return the vault file URL so user can preview
 - **WeChat articles fail silently**: Plugin returns `BROWSER_FAILED`, `web_extract` returns empty body. Both are expected for `mp.weixin.qq.com` — see WeChat fallback extraction reference.
 - **Browser CAPTCHA wall**: WeChat triggers slider CAPTCHA in headless browser; no automated workaround exists.
+- **Branch protection**: Repos with branch protection rules reject direct pushes to master. Always use feature branch + PR workflow. If you accidentally merge locally to master, `git reset --hard HEAD~1` before pushing, then create a PR.
+- **Git sync tests need upstream**: `GitSync.preflight()` requires the branch to have an upstream. In unit tests, always call `git push -u origin <branch>` after the initial commit, before calling `preflight()`.
+
+## Commit Message
+
+Commits use the article title: `clip: <title>` (truncated to 60 chars). The `finalize()` method accepts an optional `commit_message` parameter; when `None`, falls back to `clip: save web article`. The `_persist_article()` method auto-generates the message from the article title.
 
 ## Post-Clip
 
