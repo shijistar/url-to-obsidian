@@ -1,0 +1,37 @@
+# Changelog
+
+All notable changes to the url-to-obsidian plugin will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/).
+
+## [Unreleased]
+
+### Added
+- `commit_message` parameter to `GitSync.finalize()` — commit messages now include the article title (e.g. `clip: <title>`) instead of a generic `clip: save web article`
+- `skill/` directory with Hermes skill documentation for web-clip-to-obsidian workflow
+
+## [0.1.0] - 2026-07-25
+
+### Added
+- **Two-phase image confirmation workflow** — `/clip` with remote images now prompts user to confirm download via `web_to_obsidian_resume_pending` tool (`--save-images yes|no|ask`, default: `ask`)
+- **Pending state management** — stores intermediate state in `~/.hermes/workspace/cache/url-to-obsidian/` with 1-hour TTL, single-active constraint, and vault/config binding
+- **SSRF protection** for image downloads — full RFC reserved IP range blocking, redirect pinning (max 6 hops), non-default port rejection, IDNA hostname validation, Content-Type `image/*` enforcement
+- **Code-aware markdown sanitization** — `sanitize_markdown` and `find_remote_images` skip fenced code blocks, inline code spans, and indented code lines
+- **Managed note rendering** with YAML frontmatter (title, url, author, site, description, keywords, tags, extraction_method, word_count, content_hash, image_mode, etc.)
+- **Git synchronization** — auto commit + push with post-commit verification, branch safety checks, and note preservation on Git failures
+- **Vault lock** — cross-process non-blocking lock to prevent concurrent writes
+- **CLI flags** — `--refresh`, `--no-browser`, `--no-git`, `--save-images`
+- **Image localization** — downloads remote images to vault `images/` directory, rewrites markdown references, cleans up on failure
+- Secure web clipper extraction pipeline with Node.js extractor, Exa fallback, and browser fallback
+
+### Fixed
+- Sanitize injected heading title to prevent XSS via article titles
+- Refresh managed note semantics — re-clip updates existing notes correctly
+- Allow prevalidated extractor payloads to pass through validation
+
+### Security
+- SSRF protection blocks private/internal network addresses on image downloads
+- HTML dangerous tag sanitization (script, iframe, object, embed, form, etc.)
+- Credential-like marker detection in extracted content
+- Dangerous URL scheme blocking (javascript, vbscript, file, obsidian, data)
+- Knowledge base content hash verification against known secret patterns

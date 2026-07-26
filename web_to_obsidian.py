@@ -1800,14 +1800,18 @@ class GitSync:
             raise ClipError("No generated note was supplied to Git.")
         return relative
 
-    def finalize(self, generated_paths: Sequence[Path]) -> GitOutcome:
+    def finalize(
+        self, generated_paths: Sequence[Path], *, commit_message: str | None = None
+    ) -> GitOutcome:
         """Synchronize generated paths, preserving the note on every Git failure."""
         try:
-            return self._finalize(generated_paths)
+            return self._finalize(generated_paths, commit_message=commit_message)
         except ClipError:
             return GitOutcome("verification_failed", "not_attempted")
 
-    def _finalize(self, generated_paths: Sequence[Path]) -> GitOutcome:
+    def _finalize(
+        self, generated_paths: Sequence[Path], *, commit_message: str | None = None
+    ) -> GitOutcome:
         expected = self._relative_paths(generated_paths)
         status = self._git(
             self.repo_root,
@@ -1840,7 +1844,12 @@ class GitSync:
         if staged_paths != changed or unstaged_paths:
             return GitOutcome("verification_failed", "not_attempted")
 
-        commit = self._git(self.repo_root, "commit", "-m", "clip: save web article")
+        commit = self._git(
+            self.repo_root,
+            "commit",
+            "-m",
+            commit_message or "clip: save web article",
+        )
         if commit.returncode != 0:
             return GitOutcome("commit_failed", "not_attempted")
         committed = self._git(
@@ -1975,10 +1984,14 @@ class ClipService:
         )
         _ensure_no_secret_markers(note)
         write_managed_note(target, note, refresh=refresh)
+        short_title = str(article.get("title", "web article"))[:60]
+        commit_msg = f"clip: {short_title}"
         outcome = (
             GitOutcome("disabled", "disabled")
             if git_sync is None
-            else git_sync.finalize([target, *generated_paths])
+            else git_sync.finalize(
+                [target, *generated_paths], commit_message=commit_msg
+            )
         )
         return self._result_with_github_url(config, target, outcome, git_sync)
 

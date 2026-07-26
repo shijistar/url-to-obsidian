@@ -3,6 +3,26 @@
 A synchronous Hermes standalone plugin that clips a **public** web article into an
 Obsidian Vault and optionally performs guarded Git synchronization.
 
+See [CHANGELOG.md](CHANGELOG.md) for version history.
+
+## Project Structure
+
+```
+url-to-obsidian/
+├── web_to_obsidian.py        # Core plugin logic
+├── __init__.py               # Plugin entry point (slash command + resume tool)
+├── plugin.yaml               # Plugin metadata
+├── config.example.toml       # Configuration template
+├── extractor/                # Node.js content extraction engine
+│   ├── src/cli.mjs           # CLI entry point
+│   └── package.json
+├── skill/                    # Hermes agent skill documentation
+│   └── SKILL.md              # Workflow instructions for the agent
+├── tests/                    # Python unit tests
+├── CHANGELOG.md              # Version history
+└── README.md
+```
+
 ## Current scope
 
 - Static extraction with Defuddle.
@@ -141,9 +161,10 @@ With Git enabled, `/clip` requires:
 5. a successful rebase of the current upstream before extraction.
 
 After writing, it verifies the exact changed path, stages only that note,
-verifies the staged set, commits with the fixed message `clip: save web article`,
-then verifies the actual commit path set and clean worktree before pushing `HEAD`
-normally. It never force-pushes or rewrites public history.
+verifies the staged set, commits with a message derived from the article title
+(e.g. `clip: <title>`), then verifies the actual commit path set and clean
+worktree before pushing `HEAD` normally. It never force-pushes or rewrites
+public history.
 If commit fails, the note remains untracked for recovery. If push fails, the
 local commit remains for a later manual retry. When the `origin` remote points at
 GitHub, successful saves include the `blob/<branch>/...` preview URL in the user
@@ -163,3 +184,17 @@ python3 -m compileall -q __init__.py web_to_obsidian.py tests
 
 The automated tests use fixtures, temporary directories, and temporary Git
 repositories; they do not write the configured real Vault.
+
+## Hermes Skill
+
+The `skill/` directory contains a Hermes agent skill (`SKILL.md`) that teaches
+the agent how to use this plugin. To deploy it to a Hermes profile:
+
+```bash
+# Symlink the skill into the profile's skills directory
+ln -s /path/to/url-to-obsidian/skill \
+      ~/.hermes/profiles/<profile>/skills/productivity/web-clip-to-obsidian
+```
+
+The skill provides workflow instructions, invocation patterns, and pitfall
+documentation for the agent when handling "clip to obsidian" requests.

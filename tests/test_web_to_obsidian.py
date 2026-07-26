@@ -752,6 +752,86 @@ class GitSafetyTests(unittest.TestCase):
             changed = self._git(repo, "show", "--pretty=", "--name-only", "HEAD").stdout
             self.assertEqual(changed.decode().strip(), "images/2026-07-25-an-article/01-image.png")
 
+    def test_finalize_uses_custom_commit_message_when_provided(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = root / "remote.git"
+            repo = root / "vault"
+            self._git(root, "init", "--bare", str(remote))
+            self._git(root, "init", "-b", "master", str(repo))
+            self._git(repo, "config", "user.name", "Clip Test")
+            self._git(repo, "config", "user.email", "clip@example.invalid")
+            self._git(repo, "remote", "add", "origin", str(remote))
+            (repo / ".gitkeep").write_text("", encoding="utf-8")
+            self._git(repo, "add", ".gitkeep")
+            self._git(repo, "commit", "-m", "initial")
+            self._git(repo, "push", "-u", "origin", "master")
+
+            sync = clip.GitSync.preflight(repo, expected_branch="master")
+            dest = repo / "Inbox"
+            dest.mkdir()
+            note = dest / "My Article.md"
+            note.write_text("body\n", encoding="utf-8")
+            outcome = sync.finalize([note], commit_message="clip: My Article")
+
+            self.assertEqual(outcome.commit_state, "committed")
+            self.assertEqual(outcome.push_state, "pushed")
+            log_msg = self._git(repo, "log", "-1", "--pretty=%s").stdout.decode().strip()
+            self.assertEqual(log_msg, "clip: My Article")
+
+    def test_finalize_falls_back_to_default_commit_message_when_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = root / "remote.git"
+            repo = root / "vault"
+            self._git(root, "init", "--bare", str(remote))
+            self._git(root, "init", "-b", "master", str(repo))
+            self._git(repo, "config", "user.name", "Clip Test")
+            self._git(repo, "config", "user.email", "clip@example.invalid")
+            self._git(repo, "remote", "add", "origin", str(remote))
+            (repo / ".gitkeep").write_text("", encoding="utf-8")
+            self._git(repo, "add", ".gitkeep")
+            self._git(repo, "commit", "-m", "initial")
+            self._git(repo, "push", "-u", "origin", "master")
+
+            sync = clip.GitSync.preflight(repo, expected_branch="master")
+            dest = repo / "Inbox"
+            dest.mkdir()
+            note = dest / "Article.md"
+            note.write_text("body\n", encoding="utf-8")
+            outcome = sync.finalize([note])
+
+            self.assertEqual(outcome.commit_state, "committed")
+            log_msg = self._git(repo, "log", "-1", "--pretty=%s").stdout.decode().strip()
+            self.assertEqual(log_msg, "clip: save web article")
+
+    def test_finalize_truncates_long_commit_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = root / "remote.git"
+            repo = root / "vault"
+            self._git(root, "init", "--bare", str(remote))
+            self._git(root, "init", "-b", "master", str(repo))
+            self._git(repo, "config", "user.name", "Clip Test")
+            self._git(repo, "config", "user.email", "clip@example.invalid")
+            self._git(repo, "remote", "add", "origin", str(remote))
+            (repo / ".gitkeep").write_text("", encoding="utf-8")
+            self._git(repo, "add", ".gitkeep")
+            self._git(repo, "commit", "-m", "initial")
+            self._git(repo, "push", "-u", "origin", "master")
+
+            sync = clip.GitSync.preflight(repo, expected_branch="master")
+            dest = repo / "Inbox"
+            dest.mkdir()
+            note = dest / "Article.md"
+            note.write_text("body\n", encoding="utf-8")
+            long_title = "A" * 100
+            outcome = sync.finalize([note], commit_message=f"clip: {long_title}")
+
+            self.assertEqual(outcome.commit_state, "committed")
+            log_msg = self._git(repo, "log", "-1", "--pretty=%s").stdout.decode().strip()
+            self.assertTrue(log_msg.startswith("clip: A"))
+
 
 class RemoteAssetDownloadTests(unittest.TestCase):
     def test_download_remote_image_rejects_blocked_addresses_before_request(self):
