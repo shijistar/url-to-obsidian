@@ -26,7 +26,7 @@ The **source repo** is the single source of truth. The installed plugin is a sym
 Source repo:     ~/.hermes/workspace/repository/url-to-obsidian/
 Plugin symlink:  ~/.hermes/profiles/<profile>/plugins/web-to-obsidian/ → source repo
 Skill symlink:   ~/.hermes/profiles/<profile>/skills/productivity/web-clip-to-obsidian/ → source repo/skill/
-Config:          <source repo>/config.toml  (.gitignored, local settings only)
+Config:          <source repo>/config.toml
 ```
 
 Deploy via symlink (not copies):
