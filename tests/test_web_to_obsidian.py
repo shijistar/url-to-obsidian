@@ -883,5 +883,109 @@ class RemoteAssetDownloadTests(unittest.TestCase):
                 )
 
 
+class WeChatExtractionTests(unittest.TestCase):
+    def test_is_wechat_url(self):
+        self.assertTrue(clip._is_wechat_url("https://mp.weixin.qq.com/s/abc123"))
+        self.assertTrue(clip._is_wechat_url("https://weixin.qq.com/s/abc123"))
+        self.assertFalse(clip._is_wechat_url("https://example.com/article"))
+        self.assertFalse(clip._is_wechat_url("https://mp.notweixin.qq.com/s/x"))
+
+    def test_parse_wechat_html_extracts_metadata(self):
+        html = (
+            '<html><script>'
+            'var msg_title = "Test Article Title";'
+            'var nickname = "Test Author";'
+            'var ct = "1700000000";'
+            '</script>'
+            '<div id="js_content"><p>Hello world</p></div>'
+            '<script>var other = 1;</script></html>'
+        )
+        result = clip._parse_wechat_html(html, "https://mp.weixin.qq.com/s/test")
+        self.assertEqual(result["title"], "Test Article Title")
+        self.assertEqual(result["author"], "Test Author")
+        self.assertEqual(result["published"], "2023-11-14")
+        self.assertEqual(result["site"], "mp.weixin.qq.com")
+        self.assertEqual(result["method"], "wechat-curl")
+        self.assertIn("Hello world", result["markdown"])
+
+    def test_parse_wechat_html_rejects_missing_title(self):
+        html = '<div id="js_content"><p>Body</p></div>'
+        with self.assertRaises(clip.ClipError):
+            clip._parse_wechat_html(html, "https://mp.weixin.qq.com/s/x")
+
+    def test_parse_wechat_html_rejects_missing_body(self):
+        html = '<script>var msg_title = "Title";</script>'
+        with self.assertRaises(clip.ClipError):
+            clip._parse_wechat_html(html, "https://mp.weixin.qq.com/s/x")
+
+    def test_wechat_html_to_markdown_images(self):
+        html = '<p><img data-src="https://example.com/img.png" alt="pic"/></p>'
+        md = clip._wechat_html_to_markdown(html)
+        self.assertIn("![pic](https://example.com/img.png)", md)
+
+    def test_wechat_html_to_markdown_headings_and_formatting(self):
+        html = '<h2>Title</h2><p><strong>Bold</strong> and <em>italic</em></p>'
+        md = clip._wechat_html_to_markdown(html)
+        self.assertIn("## Title", md)
+        self.assertIn("**Bold**", md)
+        self.assertIn("*italic*", md)
+
+    def test_wechat_html_to_markdown_strips_tags_and_entities(self):
+        html = "<p>Hello &amp; world</p><div>inner</div>"
+        md = clip._wechat_html_to_markdown(html)
+        self.assertIn("Hello & world", md)
+        self.assertNotIn("<p>", md)
+        self.assertNotIn("<div>", md)
+
+    def test_count_words_cjk(self):
+        self.assertEqual(clip._count_words("你好世界"), 4)
+        self.assertEqual(clip._count_words("Hello World"), 2)
+        self.assertEqual(clip._count_words(""), 0)
+
+    def test_run_extractor_with_fallback_falls_back_for_wechat(self):
+        """When Node.js fails and URL is WeChat, curl fallback is used."""
+        mock_html = (
+            '<html><script>'
+            'var msg_title = "Fallback Article";'
+            'var nickname = "Author";'
+            'var ct = "1700000000";'
+            '</script>'
+            '<div id="js_content"><p>Fallback content</p></div>'
+            '</html>'
+        )
+        with mock.patch.object(clip, "run_extractor", side_effect=clip.ClipError("BROWSER_FAILED")):
+            with mock.patch.object(clip, "_fetch_wechat_html", return_value=mock_html):
+                result = clip.run_extractor_with_fallback(
+                    Path("/plugin"), "https://mp.weixin.qq.com/s/test"
+                )
+        self.assertEqual(result["title"], "Fallback Article")
+        self.assertEqual(result["method"], "wechat-curl")
+        self.assertIn("Fallback content", result["markdown"])
+
+    def test_run_extractor_with_fallback_raises_for_non_wechat(self):
+        """When Node.js fails and URL is not WeChat, the error propagates."""
+        with mock.patch.object(clip, "run_extractor", side_effect=clip.ClipError("BROWSER_FAILED")):
+            with self.assertRaises(clip.ClipError):
+                clip.run_extractor_with_fallback(
+                    Path("/plugin"), "https://example.com/article"
+                )
+
+    def test_run_extractor_with_fallback_no_fallback_on_success(self):
+        """When Node.js succeeds, no fallback is triggered."""
+        fake_result = {
+            "ok": True, "title": "T", "author": "", "published": "",
+            "description": "", "site": "x", "canonicalUrl": "https://x",
+            "url": "https://x", "keywords": [], "markdown": "body " * 50,
+            "wordCount": 50, "method": "static",
+        }
+        with mock.patch.object(clip, "run_extractor", return_value=fake_result):
+            with mock.patch.object(clip, "_fetch_wechat_html") as mock_fetch:
+                result = clip.run_extractor_with_fallback(
+                    Path("/plugin"), "https://mp.weixin.qq.com/s/test"
+                )
+        mock_fetch.assert_not_called()
+        self.assertEqual(result["method"], "static")
+
+
 if __name__ == "__main__":
     unittest.main()

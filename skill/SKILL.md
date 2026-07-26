@@ -116,8 +116,8 @@ print(result.user_message())
 - **Vault lock**: Plugin acquires a file lock during writes; concurrent clips will block
 - **Image confirmation flow**: `PendingClipResult` requires a second call with `resume_pending()` — the first call does NOT save the article
 - **GitHub URL**: After successful save, always return the vault file URL so user can preview
-- **WeChat articles fail silently**: Plugin returns `BROWSER_FAILED`, `web_extract` returns empty body. Both are expected for `mp.weixin.qq.com` — see WeChat fallback extraction reference.
-- **Browser CAPTCHA wall**: WeChat triggers slider CAPTCHA in headless browser; no automated workaround exists.
+- **WeChat articles**: Plugin now auto-falls back to curl-based extraction for `mp.weixin.qq.com` when Node.js extractor fails. The fallback parses HTML via regex (title, author, body from `js_content`), converts to Markdown, and returns the same format. No manual intervention needed.
+- **Browser CAPTCHA wall**: WeChat triggers slider CAPTCHA in headless browser; the curl fallback bypasses this entirely.
 - **Branch protection**: Repos with branch protection rules reject direct pushes to master. Always use feature branch + PR workflow. If you accidentally merge locally to master, `git reset --hard HEAD~1` before pushing, then create a PR.
 - **Git sync tests need upstream**: `GitSync.preflight()` requires the branch to have an upstream. In unit tests, always call `git push -u origin <branch>` after the initial commit, before calling `preflight()`.
 

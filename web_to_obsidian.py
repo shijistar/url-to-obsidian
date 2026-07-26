@@ -1638,6 +1638,169 @@ def run_extractor(
     return _validate_success_payload(payload)
 
 
+_WECHAT_HOST_RE = re.compile(r"(?:^|\.)weixin\.qq\.com$", re.IGNORECASE)
+_WECHAT_TITLE_RE = re.compile(r"var\s+msg_title\s*=\s*[\"'](.+?)[\"']")
+_WECHAT_AUTHOR_RE = re.compile(r"var\s+nickname\s*=\s*[\"'](.+?)[\"']")
+_WECHAT_TIME_RE = re.compile(r"var\s+ct\s*=\s*[\"']?(\d+)[\"']?")
+_WECHAT_BODY_RE = re.compile(
+    r"<div[^>]+id=[\"']js_content[\"'][^>]*>(.*?)</div>",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _is_wechat_url(url: str) -> bool:
+    """Return True when *url* points to a WeChat public-account article."""
+    try:
+        return bool(_WECHAT_HOST_RE.search(urlsplit(url).hostname or ""))
+    except Exception:
+        return False
+
+
+def _fetch_wechat_html(url: str, *, timeout: int = 30) -> str:
+    """Fetch the raw HTML of a WeChat article via curl."""
+    result = _run_bounded(
+        [
+            "curl",
+            "-sL",
+            "-H",
+            "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+            "-H",
+            "Accept-Language: zh-CN,zh;q=0.9",
+            "--max-time",
+            str(timeout),
+            url,
+        ],
+        timeout=timeout + 5,
+        stdout_limit=MAX_STDOUT_BYTES,
+        stderr_limit=MAX_STDERR_BYTES,
+    )
+    if result.returncode != 0:
+        raise ClipError("WeChat article fetch failed.")
+    html = result.stdout.decode("utf-8", errors="replace")
+    if len(html) < 500:
+        raise ClipError("WeChat article response is too short.")
+    return html
+
+
+def _wechat_html_to_markdown(html: str) -> str:
+    """Convert WeChat article body HTML to Markdown."""
+    text = html
+    # Images: <img data-src="URL"> or <img src="URL">
+    text = re.sub(
+        r'<img[^>]+(?:data-src|src)=["\']([^"\']+)["\'][^>]*alt=["\']([^"\']*)["\'][^>]*/?>',
+        r"![\2](\1)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Images without alt text
+    text = re.sub(
+        r'<img[^>]+(?:data-src|src)=["\']([^"\']+)["\'][^>]*/?>',
+        r"![](\1)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Headings
+    for level in range(6, 0, -1):
+        prefix = "#" * level
+        text = re.sub(
+            rf"<h{level}[^>]*>(.*?)</h{level}>",
+            rf"\n{prefix} \1\n",
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+    # Bold and italic
+    text = re.sub(
+        r"<strong[^>]*>(.*?)</strong>",
+        r"**\1**",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    text = re.sub(
+        r"<em[^>]*>(.*?)</em>",
+        r"*\1*",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    # Line breaks and paragraphs
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<p[^>]*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</p>", "\n", text, flags=re.IGNORECASE)
+    # Strip remaining HTML tags
+    text = re.sub(r"<[^>]+>", "", text)
+    # Unescape HTML entities
+    for old, new in (
+        ("&amp;", "&"),
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+        ("&quot;", '"'),
+        ("&#39;", "'"),
+        ("&nbsp;", " "),
+    ):
+        text = text.replace(old, new)
+    # Collapse excessive blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _count_words(markdown: str) -> int:
+    """Count words/tokens in Markdown text (CJK characters counted individually)."""
+    return len(re.findall(r"[\u4e00-\u9fff\u3400-\u4dbf]|\w+", markdown, re.UNICODE))
+
+
+def _parse_wechat_html(html: str, url: str) -> dict[str, object]:
+    """Parse metadata and body from a WeChat article HTML page."""
+    title_m = _WECHAT_TITLE_RE.search(html)
+    author_m = _WECHAT_AUTHOR_RE.search(html)
+    time_m = _WECHAT_TIME_RE.search(html)
+
+    title = title_m.group(1) if title_m else ""
+    author = author_m.group(1) if author_m else ""
+    publish_time = ""
+    if time_m:
+        try:
+            publish_time = datetime.fromtimestamp(
+                int(time_m.group(1)), tz=timezone.utc
+            ).strftime("%Y-%m-%d")
+        except (ValueError, OSError):
+            pass
+
+    body_m = _WECHAT_BODY_RE.search(html)
+    body_html = body_m.group(1) if body_m else ""
+
+    if not title or not body_html:
+        raise ClipError("WeChat article content could not be parsed.")
+
+    markdown = _wechat_html_to_markdown(body_html)
+    return {
+        "ok": True,
+        "title": title,
+        "author": author,
+        "published": publish_time,
+        "description": "",
+        "site": "mp.weixin.qq.com",
+        "canonicalUrl": url,
+        "url": url,
+        "keywords": [],
+        "markdown": markdown,
+        "wordCount": _count_words(markdown),
+        "method": "wechat-curl",
+    }
+
+
+def run_extractor_with_fallback(
+    plugin_root: Path, url: str, no_browser: bool = False
+) -> dict[str, object]:
+    """Run the Node.js extractor; fall back to curl for WeChat URLs on failure."""
+    try:
+        return run_extractor(plugin_root, url, no_browser=no_browser)
+    except ClipError:
+        if not _is_wechat_url(url):
+            raise
+        html = _fetch_wechat_html(url)
+        return _parse_wechat_html(html, url)
+
+
 def _decode_output(result: ProcessResult) -> str:
     try:
         return result.stdout.decode("utf-8")
@@ -2004,7 +2167,9 @@ class ClipService:
             else GitSync.preflight(config.vault, config.sync_branch)
         )
         article = _validate_success_payload(
-            run_extractor(self.plugin_root, options.url, no_browser=options.no_browser)
+            run_extractor_with_fallback(
+                self.plugin_root, options.url, no_browser=options.no_browser
+            )
         )
         captured_at = datetime.now(timezone.utc)
         source_markdown = sanitize_markdown(str(article["markdown"])).rstrip("\n")
