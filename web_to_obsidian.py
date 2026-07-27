@@ -803,10 +803,10 @@ def render_note(
     created: str | None = None,
     *,
     content_markdown: str | None = None,
-    image_mode: str = "remote",
+    image_mode: str | None = None,
 ) -> str:
     """Render extractor data as normalized Markdown with YAML frontmatter."""
-    if image_mode not in {"remote", "local"}:
+    if image_mode not in {None, "remote", "local"}:
         raise ClipError("The image save mode is invalid.")
     checked = _validate_success_payload(data)
     timestamp = created or datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -837,7 +837,7 @@ def render_note(
         "webclip_id": "sha256:" + _url_hash(source),
         "source_content_hash": "sha256:" + _content_hash(source_markdown),
         "content_hash": "sha256:" + _content_hash(effective_markdown),
-        "image_mode": image_mode,
+        **({"image_mode": image_mode} if image_mode is not None else {}),
         "published": checked["published"],
         "created": timestamp,
     }
@@ -2134,7 +2134,7 @@ class ClipService:
         refresh: bool,
         git_sync: GitSync | None,
         content_markdown: str,
-        image_mode: str,
+        image_mode: str | None,
         generated_paths: Sequence[Path] = (),
     ) -> ClipResult:
         source = str(article["canonicalUrl"] or article["url"])
@@ -2194,7 +2194,7 @@ class ClipService:
             _store_pending_state(_pending_root(self.env), state)
             return PendingClipResult(str(article["title"]), len(remote_images))
         content_markdown = source_markdown
-        image_mode = "remote"
+        image_mode = None
         generated_paths: list[Path] = []
         if options.save_images == "yes" and remote_images:
             target = self._target_for(config, article, captured_at.date().isoformat())
@@ -2206,6 +2206,8 @@ class ClipService:
                 target,
             )
             image_mode = "local"
+        elif remote_images:
+            image_mode = "remote"
         try:
             return self._persist_article(
                 config=config,

@@ -169,7 +169,6 @@ class RenderingTests(unittest.TestCase):
                 "webclip_id",
                 "source_content_hash",
                 "content_hash",
-                "image_mode",
                 "published",
                 "created",
             ],
@@ -183,7 +182,7 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(parsed["created"], "2026-07-23T12:00:00+00:00")
         self.assertEqual(parsed["extraction_method"], "readability")
         self.assertEqual(parsed["tags"], ["web-clip"])
-        self.assertEqual(parsed["image_mode"], "remote")
+        self.assertNotIn("image_mode", parsed)
         self.assertEqual(parsed["source_content_hash"], parsed["content_hash"])
         self.assertNotIn("source", parsed)
         self.assertNotIn("source_host", parsed)
@@ -195,6 +194,28 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("title: An Article", note)
         self.assertIn("keywords:", note)
         self.assertEqual(note.count("\n# An Article\n\n"), 1)
+
+    def test_render_note_includes_remote_image_mode_when_requested(self):
+        note = clip.render_note(
+            SUCCESS,
+            created="2026-07-23T12:00:00+00:00",
+            image_mode="remote",
+        )
+
+        frontmatter, _ = note[4:].split("\n---\n", 1)
+        parsed = yaml.safe_load(frontmatter)
+        self.assertEqual(parsed["image_mode"], "remote")
+
+    def test_render_note_includes_local_image_mode_when_requested(self):
+        note = clip.render_note(
+            SUCCESS,
+            created="2026-07-23T12:00:00+00:00",
+            image_mode="local",
+        )
+
+        frontmatter, _ = note[4:].split("\n---\n", 1)
+        parsed = yaml.safe_load(frontmatter)
+        self.assertEqual(parsed["image_mode"], "local")
 
     def test_render_note_injects_h1_when_markdown_has_no_h1(self):
         data = dict(SUCCESS, markdown="## Intro\n\nBody\n")
@@ -271,12 +292,12 @@ class RenderingTests(unittest.TestCase):
                 "webclip_id",
                 "source_content_hash",
                 "content_hash",
-                "image_mode",
                 "published",
                 "created",
             ],
         )
         self.assertEqual(parsed["fetched_url"], "https://example.com/from-redirect")
+        self.assertNotIn("image_mode", parsed)
 
 
 class ImageWorkflowHelpersTests(unittest.TestCase):
