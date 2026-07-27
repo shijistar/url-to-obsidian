@@ -29,6 +29,13 @@ ARTICLE = {
     "method": "static",
 }
 
+ARTICLE_NO_IMAGES = {
+    **ARTICLE,
+    "markdown": (
+        "# An Article\n\n" + "Useful content for an integration test. " * 20 + "\n"
+    ),
+}
+
 ARTICLE_HTML_IMAGE = {
     **ARTICLE,
     "markdown": (
@@ -109,6 +116,7 @@ class ClipServiceIntegrationTests(unittest.TestCase):
             self.assertEqual(metadata["keywords"], ARTICLE["keywords"])
             self.assertEqual(metadata["category"], "Inbox")
             self.assertEqual(metadata["extraction_method"], "static")
+            self.assertEqual(metadata["image_mode"], "remote")
             self.assertIn("<!-- webclip:managed:start -->\n# An Article\n\n", content)
             self.assertIn("![remote](https://cdn.example/image.png)", content)
 
@@ -137,6 +145,35 @@ class ClipServiceIntegrationTests(unittest.TestCase):
                 self._git(vault, "status", "--porcelain=v1").stdout,
                 b"",
             )
+
+    def test_service_omits_image_mode_when_article_has_no_remote_markdown_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vault = root / "vault"
+            lock_file = root / "vault.lock"
+            pending_root = root / "pending"
+            (vault / "Inbox").mkdir(parents=True)
+
+            service = clip.ClipService(
+                Path(__file__).parents[1],
+                env=self._env(vault, lock_file, pending_root),
+            )
+
+            with mock.patch.object(
+                clip, "run_extractor", return_value=dict(ARTICLE_NO_IMAGES)
+            ):
+                result = cast(
+                    clip.ClipResult,
+                    service.run("https://example.com/article --no-git"),
+                )
+
+            note = vault / result.path
+            content = note.read_text(encoding="utf-8")
+            frontmatter, _ = content[4:].split("\n---\n", 1)
+            metadata = yaml.safe_load(frontmatter)
+
+            self.assertTrue(note.is_file())
+            self.assertNotIn("image_mode", metadata)
 
     def test_service_asks_before_writing_when_remote_images_exist(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -207,9 +244,12 @@ class ClipServiceIntegrationTests(unittest.TestCase):
             result = service.resume_pending("no")
             note = vault / result.path
             content = note.read_text(encoding="utf-8")
+            frontmatter, _ = content[4:].split("\n---\n", 1)
+            metadata = yaml.safe_load(frontmatter)
 
             self.assertEqual(result.commit_state, "disabled")
             self.assertTrue(note.is_file())
+            self.assertEqual(metadata["image_mode"], "remote")
             self.assertIn("![remote](https://cdn.example/image.png)", content)
             self.assertFalse((pending_root / "active.json").exists())
 
@@ -241,7 +281,10 @@ class ClipServiceIntegrationTests(unittest.TestCase):
 
             note = vault / result.path
             content = note.read_text(encoding="utf-8")
+            frontmatter, _ = content[4:].split("\n---\n", 1)
+            metadata = yaml.safe_load(frontmatter)
             image_dir = clip._slugify_image_dir(note, ARTICLE["canonicalUrl"])
+            self.assertEqual(metadata["image_mode"], "local")
             self.assertIn(f"![remote](../images/{image_dir}/01-image.png)", content)
             self.assertTrue((vault / "images" / image_dir / "01-image.png").is_file())
             self.assertFalse((pending_root / "active.json").exists())
