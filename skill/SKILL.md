@@ -50,7 +50,12 @@ sync_branch = "master"
 
 ## Invocation Pattern
 
-The plugin exposes a Python API via `build_handler`. Invoke from the plugin directory:
+There are **two** Python entry points, both invoked from the plugin directory:
+
+1. **Hermes command boundary** via `build_handler()` — returns a formatted `str` safe to show directly to the user.
+2. **Structured API** via `ClipService.run()` — returns `ClipResult` or `PendingClipResult` for programmatic branching.
+
+Hermes-style string handler:
 
 ```python
 import sys
@@ -60,11 +65,26 @@ from pathlib import Path
 
 plugin_root = Path('.')
 handler = build_handler(plugin_root)
-result = handler('<URL>')
-print(result)
+message = handler('<URL>')
+print(message)
 ```
 
-CLI shortcut (same effect):
+Structured API for automation:
+
+```python
+import sys
+sys.path.insert(0, '.')
+from pathlib import Path
+from web_to_obsidian import ClipService
+
+plugin_root = Path('.')
+service = ClipService(plugin_root)
+result = service.run('<URL>')
+print(type(result).__name__)
+print(result.user_message())
+```
+
+CLI shortcut (string handler):
 ```bash
 cd ~/.hermes/profiles/<profile>/plugins/web-to-obsidian && \
 python3 -c "
@@ -78,7 +98,7 @@ Flags: `--no-browser`, `--no-git`, `--refresh`, `--save-images yes|no|ask`
 
 ## Workflow
 
-1. **Extract**: Call `handler(url)` — runs Node.js extractor, returns `ClipResult` or `PendingClipResult`
+1. **Extract**: Call `service.run(url)` for structured control flow, or `handler(url)` when a final user-facing string is sufficient.
 2. **PendingClipResult** (has remote images): Prompt user `yes`/`no`
    - `yes` → download and localize images into vault `images/` dir
    - `no` → keep remote image URLs
