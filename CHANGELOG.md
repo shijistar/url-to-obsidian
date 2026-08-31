@@ -4,16 +4,12 @@ All notable changes to the url-to-obsidian plugin will be documented in this fil
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## v0.4.0
-
-2026-08-31
+## [0.4.0] - 2026-08-31
 
 ### Fixed
 - **Netease author/published fallback** — `c.m.163.com` article pages do not expose author/published in standard meta tags or JSON-LD; the metadata lives only in the embedded `window.__INITIAL_STATE__` JSON (`main.source` / `main.sourceinfo.tname` / `main.ptime`). The extractor now falls back to that embedded state (scoped to `163.com` hostnames) when Defuddle returns no author or published value.
 
-## v0.3.0
-
-2026-07-26
+## [0.3.0] - 2026-07-26
 
 ### Added
 - **WeChat article curl fallback** — when Node.js extractor fails for `mp.weixin.qq.com` URLs, automatically falls back to curl-based extraction: fetches raw HTML, parses metadata (title, author, publish time) and body (`js_content` div) via regex, converts HTML to Markdown. No manual intervention needed.
@@ -23,17 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 - `_run_locked()` now calls `run_extractor_with_fallback()` instead of `run_extractor()` directly
 
-## v0.2.0
-
-2026-07-26
+## [0.2.0] - 2026-07-26
 
 ### Added
 - `commit_message` parameter to `GitSync.finalize()` — commit messages now include the article title (e.g. `clip: <title>`) instead of a generic `clip: save web article`
 - `skill/` directory with Hermes skill documentation for web-clip-to-obsidian workflow
 
-## v0.1.0
-
-2026-07-25
+## [0.1.0] - 2026-07-25
 
 ### Added
 - **Two-phase image confirmation workflow** — `/clip` with remote images now prompts user to confirm download via `web_to_obsidian_resume_pending` tool (`--save-images yes|no|ask`, default: `ask`)
