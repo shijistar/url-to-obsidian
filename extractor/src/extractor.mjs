@@ -85,6 +85,65 @@ export function meetsQualityGate(result) {
   return meaningfulTitle(result?.title) && typeof result?.markdown === 'string' && result.markdown.trim().length >= MIN_MARKDOWN_CHARS;
 }
 
+/** Extract the balanced JSON object starting at the given index ("" if unbalanced). */
+function extractBalancedObjectAt(text, startIndex) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = startIndex; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(startIndex, i + 1);
+    }
+  }
+  return '';
+}
+
+/**
+ * Netease mobile pages (c.m.163.com) expose author/published only inside the
+ * embedded `window.__INITIAL_STATE__` JSON — not in standard meta tags or
+ * JSON-LD. The full state blob may be followed by extra script payloads that
+ * make a wholesale JSON.parse unreliable, so we read the balanced `main`
+ * object with field-level regexes and ignore recommendation-list sources.
+ */
+function extractNeteaseMeta(html) {
+  const marker = 'window.__INITIAL_STATE__';
+  const markerIndex = html.indexOf(marker);
+  if (markerIndex < 0) return { author: '', published: '' };
+  const eqIndex = html.indexOf('=', markerIndex + marker.length);
+  if (eqIndex < 0) return { author: '', published: '' };
+
+  const stateBlock = extractBalancedObjectAt(html, eqIndex + 1);
+  if (!stateBlock) return { author: '', published: '' };
+
+  const mainKey = stateBlock.indexOf('"main"');
+  const mainStart = mainKey >= 0 ? stateBlock.indexOf('{', mainKey) : -1;
+  const mainBlock = mainStart >= 0 ? extractBalancedObjectAt(stateBlock, mainStart) : stateBlock;
+
+  let author = /"source"\s*:\s*"([^"]+)"/.exec(mainBlock)?.[1] ?? '';
+  if (!author) {
+    author = /"sourceinfo"\s*:\s*\{[\s\S]*?"tname"\s*:\s*"([^"]+)"/.exec(mainBlock)?.[1] ?? '';
+  }
+  const published = /"ptime"\s*:\s*"([^"]+)"/.exec(mainBlock)?.[1] ?? '';
+
+  return {
+    author: cleanString(author) || '',
+    published: cleanString(published) || '',
+  };
+}
+
 function safeCanonical(document, sourceUrl) {
   const canonical = document.querySelector('link[rel~="canonical" i]');
   const href = canonical?.getAttribute('href');
@@ -157,10 +216,11 @@ export async function extractHtml(html, inputUrl) {
   }
 
   const markdown = typeof parsed.content === 'string' ? parsed.content.trim() : '';
+  const embeddedMeta = sourceUrl.hostname.includes('163.com') ? extractNeteaseMeta(html) : null;
   return {
     title: cleanString(parsed.title),
-    author: cleanString(parsed.author) || '',
-    published: cleanString(parsed.published) || '',
+    author: cleanString(parsed.author) || embeddedMeta?.author || '',
+    published: cleanString(parsed.published) || embeddedMeta?.published || '',
     description: cleanString(parsed.description) || '',
     site: cleanString(parsed.site) || cleanString(parsed.domain) || sourceUrl.hostname,
     canonicalUrl,

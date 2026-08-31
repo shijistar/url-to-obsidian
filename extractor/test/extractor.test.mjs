@@ -52,3 +52,57 @@ test('extractUrl fails closed when static quality is insufficient and browser us
     error => error.code === 'QUALITY_GATE',
   );
 });
+
+const neteaseFixtureUrl = new URL('./fixtures/netease-article.html', import.meta.url);
+const neteaseFixtureHtml = await readFile(neteaseFixtureUrl, 'utf8');
+
+test('extractHtml falls back to embedded __INITIAL_STATE__ author on Netease pages', async () => {
+  const result = await extractHtml(neteaseFixtureHtml, 'https://c.m.163.com/news/a/L5BC6R9V0553K5ZV.html');
+
+  assert.equal(result.title, '40万亿美债要是守不住，最后的杀手锏就是出动军队化解美债？');
+  assert.equal(result.author, '流苏晚晴');
+  assert.equal(result.published, '2026-08-27 12:32:05');
+  assert.equal(result.site, 'c.m.163.com');
+});
+
+test('extractHtml keeps standard author metadata over embedded Netease state', async () => {
+  const html = `<!doctype html>
+<html>
+<head><title>测试标题</title><meta name="author" content="标准作者"></head>
+<body>
+  <article>${'测试正文'.repeat(120)}</article>
+  <script>window.__INITIAL_STATE__={"main":{"source":"内嵌作者","sourceinfo":{"tname":"内嵌作者"}}}</script>
+</body>
+</html>`;
+
+  const result = await extractHtml(html, 'https://c.m.163.com/news/a/TESTID.html');
+  assert.equal(result.author, '标准作者');
+});
+
+test('extractHtml tolerates broken __INITIAL_STATE__ without throwing', async () => {
+  const html = `<!doctype html>
+<html>
+<head><title>测试标题</title></head>
+<body>
+  <article>${'测试正文'.repeat(120)}</article>
+  <script>window.__INITIAL_STATE__={"main":{"source":"测试作者",}</script>
+</body>
+</html>`;
+
+  const result = await extractHtml(html, 'https://c.m.163.com/news/a/TESTID.html');
+  assert.equal(typeof result.author, 'string');
+});
+
+test('extractHtml only applies embedded-state fallback on 163.com hostnames', async () => {
+  const html = `<!doctype html>
+<html>
+<head><title>测试标题</title></head>
+<body>
+  <article>${'测试正文'.repeat(120)}</article>
+  <script>window.__INITIAL_STATE__={"main":{"source":"内部来源"}}</script>
+</body>
+</html>`;
+
+  const result = await extractHtml(html, 'https://example.com/news/a/TESTID.html');
+  assert.equal(result.author, '');
+});
