@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Codex神级的Skills，让你秒变架构师！</title>
+<meta name="keywords" content="codex,skills,架构,AI">
+<meta name="description" content="Codex 中最值得安装的 11 个神级 Skills">
+<meta property="og:title" content="Codex神级的Skills，让你秒变架构师！">
+</head>
+<body>
+<div class="article">
+<h1>Codex神级的Skills，让你秒变架构师！</h1>
+<div class="content">
+<p>大家好，我是星哥。最近和群里几个做研发的朋友聊天，大家吐槽最多的一个痛点就是：AI写代码，看着挺美，一跑就废。你让AI帮你写个功能模块，代码唰唰唰出来了，看起来没毛病，结果一上测试环境直接炸锅——边界条件没处理、异常捕获缺失、甚至给你留个SQL注入的惊天大坑。</p>
+<p>更让人头疼的是，遇到稍微复杂点的多步任务，AI的上下文一长就开始失忆；Token烧得飞快，月底一看账单心在滴血；想让AI调个外部API，它却像个无头苍蝇一样乱撞。</p>
+<p>今天给大家盘点一下，Codex 中最值得安装的 11 个神级 Skills。从底层逻辑到实战场景，一篇文章给你讲透。建议先收藏，再照着装！</p>
+<p>什么是 Codex Skills？别被技能这个词唬住，用大白话说，Skill 就是一套以 SKILL.md 文件为核心的外挂指令包。它最牛的地方在于渐进式加载：只有当你触发特定任务时，系统才会把对应的完整指令加载进来。如果不匹配，绝不占用一丁点内存。</p>
+<img class="js-preview-img" src="https://static.ws.126.net/163/frontend/images/2022/empty.png" data-echo="http://dingyue.ws.126.net/2026/0714/acbd2f0cj00ti57b900jld200u000c003c005x.png">
+<p>打开网易新闻 查看更多图片。这张图展示了 Skill 的渐进式加载机制，真实地址原本藏在 data-echo 属性里，而不是初始 src 占位图。</p>
+<p>第一，极其省 Token。相比传统把一堆 Prompt 塞进上下文，Skills 只在匹配时加载，平时零占用。第二，可复用。写一次，全项目受益。第三，可组合。多个 Skill 可以按依赖串起来，形成完整工作流。</p>
+<p>这能带来什么好处？对单人开发者，等于随身带了一个架构师；对团队，等于把最佳实践固化成可版本管理的指令库。落地时建议先从一个高频痛点入手，跑通后再横向铺开。</p>
+</div>
+</div>
+</body>
+</html>
