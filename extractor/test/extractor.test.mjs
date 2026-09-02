@@ -93,6 +93,16 @@ test('extractHtml tolerates broken __INITIAL_STATE__ without throwing', async ()
   assert.equal(typeof result.author, 'string');
 });
 
+const lazyImageFixtureUrl = new URL('./fixtures/netease-lazy-image.html', import.meta.url);
+const lazyImageFixtureHtml = await readFile(lazyImageFixtureUrl, 'utf8');
+
+test('extractHtml resolves lazy-loaded image src from data-echo instead of placeholder', async () => {
+  const result = await extractHtml(lazyImageFixtureHtml, 'https://c.m.163.com/news/a/L1PQHL6605314EKW.html');
+
+  assert.match(result.markdown, /!\[[^\]]*\]\((https?:\/\/)?dingyue\.ws\.126\.net\/2026\/0714\/acbd2f0cj00ti57b900jld200u000c003c005x\.png\)/);
+  assert.doesNotMatch(result.markdown, /empty\.png/);
+});
+
 test('extractHtml only applies embedded-state fallback on 163.com hostnames', async () => {
   const html = `<!doctype html>
 <html>

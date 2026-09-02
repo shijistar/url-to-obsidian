@@ -175,6 +175,12 @@ function absolutizeLinks(document, sourceUrl) {
     }
   }
   for (const element of document.querySelectorAll('img[src], source[src]')) {
+    if (element.tagName?.toLowerCase() === 'img') {
+      // 网易等站点用懒加载：src 是占位图，真实地址藏在 data-echo/data-src/data-original。
+      // 优先用真实地址覆盖占位 src，否则 Defuddle 只会抓到占位图。
+      const lazySrc = extractLazyImageSrc(element, sourceUrl);
+      if (lazySrc) element.setAttribute('src', lazySrc);
+    }
     const src = element.getAttribute('src')?.trim();
     if (!src) continue;
     try {
@@ -185,6 +191,22 @@ function absolutizeLinks(document, sourceUrl) {
       element.removeAttribute('src');
     }
   }
+}
+
+// 懒加载真实图片地址：优先尝试 data-echo / data-src / data-original，
+// 解析为同源可访问的 http(s) URL；失败时回退到原 src（可能已是占位图）。
+function extractLazyImageSrc(element, sourceUrl) {
+  for (const attr of ['data-echo', 'data-src', 'data-original', 'data-lazy-src']) {
+    const candidate = element.getAttribute(attr)?.trim();
+    if (!candidate) continue;
+    try {
+      const absolute = new URL(candidate, sourceUrl);
+      if (absolute.protocol === 'http:' || absolute.protocol === 'https:') return absolute.href;
+    } catch {
+      // 忽略无法解析的候选，继续尝试下一个属性
+    }
+  }
+  return null;
 }
 
 /** Parse already-fetched HTML without evaluating page scripts or allowing Defuddle network fallbacks. */

@@ -4,6 +4,14 @@ All notable changes to the url-to-obsidian plugin will be documented in this fil
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0] - 2026-09-02
+
+### Added
+- Bumped `web-to-obsidian-extractor` subpackage from `0.1.0` to `0.2.0`.
+
+### Fixed
+- **Lazy-loaded image extraction** — Netease (`c.m.163.com`) and similar sites render images with a placeholder `src` (`empty.png`) and the real URL in `data-echo` / `data-src` / `data-original`. The extractor now resolves the real lazy-loaded image URL (preferring `data-echo` → `data-src` → `data-original` → `data-lazy-src`, falling back to the original `src`) so clipped articles reference the actual image instead of the placeholder. Covered by `extractor/test/fixtures/netease-lazy-image.html` and a new unit test (full suite 23/23 passing).
+
 ## [0.4.0] - 2026-08-31
 
 ### Fixed
