@@ -2096,14 +2096,29 @@ class ClipService:
         )
         return destination
 
+    @staticmethod
+    def _publish_date(article: Mapping[str, object], fallback: str) -> str:
+        """Return the article's published date if valid, otherwise *fallback*."""
+        published = str(article.get("published") or "").strip()
+        if published:
+            # Accept full ISO timestamps like "2026-05-20T01:20:46+00:00" and bare dates
+            date_part = published[:10]
+            try:
+                datetime.strptime(date_part, "%Y-%m-%d")
+                return date_part
+            except ValueError:
+                pass
+        return fallback
+
     def _target_for(self, config: ClipConfig, article: Mapping[str, object], capture_date: str) -> Path:
         destination = self._ensure_destination(config)
         source = str(article["canonicalUrl"] or article["url"])
+        date_prefix = self._publish_date(article, capture_date)
         return choose_target(
             destination,
             str(article["title"]),
             source,
-            capture_date=capture_date,
+            capture_date=date_prefix,
         )
 
     def _result_with_github_url(
