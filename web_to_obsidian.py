@@ -812,7 +812,9 @@ def render_note(
     timestamp = created or datetime.now(timezone.utc).isoformat(timespec="seconds")
     source = normalize_url(str(checked["canonicalUrl"] or checked["url"]))
     fetched_url = normalize_url(str(checked["url"]))
-    source_markdown = sanitize_markdown(str(checked["markdown"])).rstrip("\n")
+    # Extract markdown content directly – it is article body, not metadata,
+    # and must never leak into frontmatter.
+    source_markdown = sanitize_markdown(str(data.get("markdown", ""))).rstrip("\n")
     effective_markdown = (
         _normalize_text(content_markdown).rstrip("\n")
         if content_markdown is not None
@@ -1556,6 +1558,12 @@ def _extractor_failure(payload: Mapping[str, object]) -> ClipError:
 
 
 def _validate_success_payload(data: Mapping[str, object]) -> dict[str, object]:
+    """Validate and normalize metadata fields from the extractor payload.
+
+    ``markdown`` (article body) is intentionally excluded from this
+    validator – it is extracted separately in :func:`render_note` and
+    never written to frontmatter.
+    """
     limits = {
         "title": 10_000,
         "author": 100_000,
@@ -1564,7 +1572,6 @@ def _validate_success_payload(data: Mapping[str, object]) -> dict[str, object]:
         "site": 100_000,
         "canonicalUrl": 8192,
         "url": 8192,
-        "markdown": 10 * 1024 * 1024,
         "method": 1000,
     }
     checked: dict[str, object] = {}

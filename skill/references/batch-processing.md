@@ -174,10 +174,41 @@ sed -i 's/^title: .*$/title: New Title/' "Inbox/new-filename.md"
 git add -A && git commit -m "clip: New Title" && git push
 ```
 
+## Per-Article Image Preferences in Batch
+
+When the user provides a list of URLs with mixed image preferences (some "本地图片", some not specified), process each article with the correct `--save-images` flag based on the user's per-article annotation.
+
+**Example user input:**
+```
+抓取到obsidian，
+https://example.com/article1    # no annotation → remote
+https://example.com/article2，本地图片
+https://example.com/article3
+https://example.com/article4，本地图片
+```
+
+**Processing pattern:**
+1. Parse the list into `(url, images_flag)` tuples
+2. Use `--save-images no` for unannotated URLs, `--save-images yes` for "本地图片"
+3. Pass flags directly (non-interactive) since the user pre-declared preferences
+
+**Important**: This pre-declared batch mode is the ONLY acceptable scenario for skipping the image confirmation prompt. Single-URL clips MUST always ask.
+
+## Anti-Bot Fallback for Failed Articles in Batch
+
+When extractor fails for some articles in a batch (QUALITY_GATE, HTTP_STATUS, WeChat fetch failure):
+
+1. **Don't block the batch** — log the failure, continue with remaining articles
+2. **After batch completes**, use `web_extract` on failed URLs as fallback
+3. If `web_extract` also fails (SPA sites like kimi.com, quark.cn), report to user
+4. For successful `web_extract` results, save via `_persist_article()` with `article["markdown"]` field (see `anti-bot-fallback-web-extract.md`)
+5. For local-image articles that failed extraction, re-clip with `--refresh --save-images yes` after the fallback save
+
 ## Version History
 
-- 2026-09-03-v2: Added `execute_code` timeout pitfall with bash script workaround. Added one-step non-interactive clip pattern. Added failed-extraction handling. Added renaming workflow. Split into 2 bash scripts for 20+ articles.
-- 2026-09-03-v1: Created from batch session of 20 articles (163.com, Juejin, GitHub, WeChat)
+- 2026-09-03-v3: Added per-article image preference pattern. Added anti-bot fallback workflow for batch failures.
+- 2026-09-03-v2: Added execute_code timeout pitfall with bash script workaround. Added one-step non-interactive clip pattern. Added failed-extraction handling. Added renaming workflow. Split into 2 bash scripts for 20+ articles.
+- 2026-09-03-v1: Created from batch session of 20 articles (163.com, Jiean, GitHub, WeChat).
   - Discovered dirty-worktree pitfall from failed local-images clips
   - Discovered 163.com rate limiting requiring 2s inter-clip delay
   - Verified WeChat curl fallback works in batch mode

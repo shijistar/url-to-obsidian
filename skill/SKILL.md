@@ -1,7 +1,7 @@
 ---
 name: web-clip-to-obsidian
 description: Clip web articles to the Obsidian vault via the url-to-obsidian plugin — extract, confirm images, save as dated markdown, commit & push to Git. Use when the user shares a URL wanting to save/read-later in Obsidian, or says "抓取到obsidian"/"clip to obsidian"/"save to vault".
-version: 1.2.0
+version: 1.3.0
 author: Hermes Agent
 metadata:
   hermes:
@@ -164,6 +164,15 @@ print(result.user_message())
 ## Commit Message
 
 Commits use the article title: `clip: <title>` (truncated to 60 chars). The `finalize()` method accepts an optional `commit_message` parameter; when `None`, falls back to `clip: save web article`. The `_persist_article()` method auto-generates the message from the article title.
+
+
+## Filename Date Prefix
+
+New clips use the article's **published date** (from frontmatter `published` field) as the filename date prefix, falling back to the capture date when published date is unavailable or invalid. Implemented in `ClipService._publish_date()` (PR #15 on url-to-obsidian).
+
+- `published: '2026-05-20T01:20:46+00:00'` → filename prefix `2026-05-20`
+- `published: '2026-05-20'` → filename prefix `2026-05-20`
+- Missing/invalid published → falls back to today's date
 
 ## Post-Clip
 
