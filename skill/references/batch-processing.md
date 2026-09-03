@@ -2,6 +2,49 @@
 
 When clipping multiple articles (10+) in a single session, specific pitfalls and patterns apply.
 
+## Pitfall: `execute_code` 300s Timeout
+
+The `execute_code` tool has a hard 300-second timeout. Processing 10+ articles sequentially (each taking 10-30s extraction + 2s delay) will exceed this limit.
+
+**Symptom**: `⏰ Cell timed out after 300s; the session kernel was killed and its state was lost.`
+
+**Fix**: Use bash scripts via `terminal()` instead of `execute_code` for batch processing. Write a `.sh` file with a loop, then execute it:
+```bash
+cat > /tmp/batch_clip.sh << 'SCRIPT'
+#!/bin/bash
+cd ~/.hermes/workspace/repository/url-to-obsidian
+VAULT=~/obsidian/shijistar
+
+clip_one() {
+    local url="$1" imgs="$2" label="$3"
+    cd "$VAULT" && git checkout -- . 2>/dev/null
+    cd ~/.hermes/workspace/repository/url-to-obsidian
+    sleep 2
+    result=$(python3 -c "
+import sys; sys.path.insert(0, '.')
+from pathlib import Path
+from web_to_obsidian import ClipService
+service = ClipService(Path('.'))
+try:
+    result = service.run('${url} --save-images ${imgs} --no-browser')
+    print(type(result).__name__ + '|||' + result.user_message())
+except Exception as e:
+    print('ERROR|||' + str(e))
+" 2>&1)
+    status=$(echo "$result" | cut -d'|' -f1)
+    msg=$(echo "$result" | cut -d'|' -f3-)
+    echo "${label}. [${imgs}] ${status}: ${msg}"
+}
+
+clip_one "<url1>" "no" "1"
+clip_one "<url2>" "yes" "2"
+# ... more articles
+SCRIPT
+bash /tmp/batch_clip.sh
+```
+
+For 20+ articles, split into 2 bash scripts (10-12 each) to stay within the 600s terminal timeout.
+
 ## Pitfall: Dirty Vault Worktree Between Clips
 
 The vault worktree can become dirty between sequential clips, blocking subsequent clips with:
@@ -92,6 +135,23 @@ Collect all `ClipResult.github_url` values and present as a table:
 | 2 | ... | **本地** | [预览](url) |
 ```
 
+## One-Step Non-Interactive Clip
+
+When the image decision is already known (user specified "本地图片" or "远程图片"), use flags to skip the PendingClipResult two-step:
+```python
+result = service.run(f'{url} --save-images yes|no --no-browser')
+# Returns ClipResult directly, no resume_pending() needed
+```
+
+This is the recommended approach for batch processing — it avoids stale pending-state errors.
+
+## Handling Failed Extractions in Batch
+
+For URLs where the extractor fails (QUALITY_GATE, HTTP_STATUS):
+1. Try `web_extract` as fallback (see `anti-bot-fallback-web-extract.md`)
+2. If web_extract also fails (SPA pages like kimi.com), report to user as requiring browser
+3. Don't block the batch — log the failure and continue with remaining articles
+
 ## WeChat Batch Notes
 
 - WeChat (`mp.weixin.qq.com`) clips use the plugin's curl fallback when Node.js extractor fails
@@ -104,9 +164,20 @@ Collect all `ClipResult.github_url` values and present as a table:
 - Use `--save-images no` (default) — these rarely have downloadable images
 - Gist content is typically README-style markdown
 
+## Renaming a Clipped Article
+
+If the user wants a different title than what was auto-extracted:
+```bash
+cd ~/obsidian/shijistar
+git mv "Inbox/old-filename.md" "Inbox/new-filename.md"
+sed -i 's/^title: .*$/title: New Title/' "Inbox/new-filename.md"
+git add -A && git commit -m "clip: New Title" && git push
+```
+
 ## Version History
 
-- 2026-09-03: Created from batch session of 20 articles (163.com, Juejin, GitHub, WeChat)
+- 2026-09-03-v2: Added `execute_code` timeout pitfall with bash script workaround. Added one-step non-interactive clip pattern. Added failed-extraction handling. Added renaming workflow. Split into 2 bash scripts for 20+ articles.
+- 2026-09-03-v1: Created from batch session of 20 articles (163.com, Juejin, GitHub, WeChat)
   - Discovered dirty-worktree pitfall from failed local-images clips
   - Discovered 163.com rate limiting requiring 2s inter-clip delay
   - Verified WeChat curl fallback works in batch mode
