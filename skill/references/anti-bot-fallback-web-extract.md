@@ -36,7 +36,7 @@ article = {
 }
 ```
 
-**⚠️ Critical**: The `markdown` field MUST be a non-empty string containing the article content. `_validate_success_payload()` checks all fields in the limits dict — an empty or missing `markdown` raises `ClipError("The extractor returned incomplete or invalid article data.")`. The `content_markdown` parameter to `_persist_article()` is a separate arg; both must be set.
+**Note on `markdown` field**: `_validate_success_payload()` no longer validates `markdown` (removed in PR #15). However, `render_note()` reads it via `data.get("markdown", "")` to populate the article body. Include it so the note has content. The `content_markdown` parameter to `_persist_article()` overrides it when provided.
 
 3. **Call _persist_article directly** — use `ClipConfig.from_env()` and `GitSync.preflight()`:
 ```python
