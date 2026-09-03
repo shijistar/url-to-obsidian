@@ -4,6 +4,16 @@ All notable changes to the url-to-obsidian plugin will be documented in this fil
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.0] - 2026-09-03
+
+### Added
+- **Web Clip skill fully migrated to repo** — the `web-clip-to-obsidian` skill (SKILL.md v1.2.0 + 10 reference documents) is now version-controlled in `skill/` for git-based history and cross-profile sharing.
+- 10 skill reference documents covering: anti-bot fallback (web_extract), batch processing, git sync testing, GitHub private blob URLs & image mode, Netease embedded-state author extraction, Netease placeholder & video links, pending-resume fallback, profile skill vs source-repo sync, repo-linked maintenance, Zhihu cookie & scraper diagnostics.
+
+### Changed
+- Skill version bumped from 1.1.0 to 1.2.0.
+- Profile skill directory can now be a symlink to `skill/` instead of a standalone copy, ensuring single source of truth.
+
 ## [0.5.0] - 2026-09-02
 
 ### Added
