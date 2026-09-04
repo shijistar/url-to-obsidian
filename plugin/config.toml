@@ -1,0 +1,7 @@
+[clip]
+vault = "~/obsidian/shijistar"
+destination = "Inbox"
+images = "images"
+sync_branch = "master"
+lock_file = "~/.hermes/workspace/cache/url-to-obsidian/vault.lock"
+pending_root = "~/.hermes/workspace/cache/url-to-obsidian/pending-state"

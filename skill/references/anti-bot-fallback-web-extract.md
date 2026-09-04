@@ -1,12 +1,13 @@
 # Anti-bot Fallback via web_extract
 
-When the Node.js extractor fails due to anti-bot measures (Zhihu, some paywalled sites), but `web_extract` succeeds in retrieving the article content, use this fallback workflow to save the article to the vault.
+When the Node.js extractor fails due to anti-bot measures (Zhihu, Doubao, some paywalled sites), but `web_extract` succeeds in retrieving the article content, use this fallback workflow to save the article to the vault.
 
 ## When to Use
 
-- `node extractor/src/cli.mjs <url> --no-browser` returns `ok: false`, `code: "HTTP_STATUS"`
+- `node extractor/src/cli.mjs <url> --no-browser` returns `ok: false`, `code: "QUALITY_GATE"` or `HTTP_STATUS"`
 - `web_extract` on the same URL returns clean Markdown/HTML content
 - User wants the article saved despite extractor failure
+- Common triggers: Zhihu, Doubao (doubao.com), some paywalled SPA sites
 
 ## Workflow
 
@@ -17,25 +18,25 @@ result = web_extract([url])
 # result["results"][0]["content"] contains the Markdown/HTML
 ```
 
-2. **Build article dict** (must pass `_validate_success_payload`)
+2. **Build article dict** (must pass `_validate_success_payload`):
 ```python
 article = {
     "ok": True,
     "title": "...",          # required, non-empty
-    "author": "...",          # optional but recommended
-    "published": "...",       # ISO 8601, optional
-    "description": "...",     # optional
-    "site": "...",            # optional
+    "author": "...",          # required string (may be empty "")
+    "published": "...",       # required string (may be empty ""; ISO 8601 when set)
+    "description": "...",     # required string (may be empty "")
+    "site": "...",            # required string (may be empty "")
     "canonicalUrl": url,        # required, valid URL
     "keywords": ["..."],       # list of strings, max 128
     "url": url,                 # required, valid URL
     "wordCount": 1000,          # int >= 0
-    "method": "static",         # required
-    "markdown": ""              # empty string is fine
+    "method": "web_extract_fallback",  # required, non-empty
+    "markdown": ""              # required string (may be empty "")
 }
 ```
 
-3. **Call _persist_article directly**
+3. **Call _persist_article directly** — use `ClipConfig.from_file()` and `GitSync()` constructor:
 ```python
 from pathlib import Path
 from datetime import datetime
@@ -52,12 +53,18 @@ result = service._persist_article(
     captured_at=datetime.now(),
     refresh=False,
     git_sync=git_sync,
-    content_markdown=extracted_markdown,  # from web_extract
+    content_markdown=article["markdown"],
     image_mode=None,  # HTML <img> tags don't trigger Markdown image flow
     generated_paths=[],
 )
 print(result.user_message())
 ```
+
+**⚠️ API notes**:
+- `ClipConfig.from_file()` reads from `config.toml` — the single source of truth for all config (vault, destination, images, sync_branch, lock_file, pending_root). No hardcoded paths.
+- `ClipConfig.from_env()` reads from env vars with hardcoded defaults — prefer `from_file()` for portability.
+- `GitSync(vault, repo_root, branch)` constructor requires all 3 positional args. Auto-detecting `repo_root` via `git rev-parse` is NOT built into the constructor; use `GitSync.preflight(vault, branch)` classmethod if you want that convenience (it also validates git state).
+- `generated_paths` is optional, defaults to `()`
 
 ## Key Points
 
@@ -65,25 +72,23 @@ print(result.user_message())
 - HTML `<img>` tags are NOT processed by the remote-image confirmation flow
 - This bypasses the `PendingClipResult` / `resume_pending()` flow entirely
 - The `markdown` field in article dict can be empty — the real content goes in `content_markdown` param
-- Requires: `ok: true`, `method: static`, valid `canonicalUrl` and `url`, non-empty `title`
+- Requires: `ok: true`, `method: non-empty`, valid `canonicalUrl` and `url`, non-empty `title`
 
-## Example: Zhihu Article
+## Example: Doubao Article
 
 ```python
-# From today's session
 article = {
     "ok": True,
-    "title": "Google开源的DESIGN.md设计标准，让AI开发的网页视觉高度统一、拉满质感",
-    "author": "晓来在进化",
-    "published": "2026-06-18T04:50:00+08:00",
-    "description": "Google Stitch 团队推出的 DESIGN.md 设计系统...",
-    "site": "知乎",
-    "canonicalUrl": "https://zhuanlan.zhihu.com/p/2050982592456005078",
-    "keywords": ["DESIGN.md", "AI设计", "Google", "设计系统"],
-    "url": "https://zhuanlan.zhihu.com/p/2050982592456005078",
-    "wordCount": 1200,
-    "method": "static",
-    "markdown": ""
+    "title": "古德哈特定律介绍",
+    "author": "",
+    "published": "2026-05-26",
+    "description": "当一项指标被当作考核目标时，它就不再是有效的衡量指标",
+    "site": "doubao.com",
+    "canonicalUrl": "https://www.doubao.com/thread/aa1278a169ca5",
+    "keywords": [],
+    "url": "https://www.doubao.com/thread/aa1278a169ca5",
+    "wordCount": 200,
+    "method": "web_extract_fallback"
 }
 ```
 
@@ -94,4 +99,6 @@ article = {
 
 ## Version History
 
-- 2026-09-03: Created from session where Zhihu article `https://zhuanlan.zhihu.com/p/2050982592456005078` was clipped via web_extract fallback after extractor returned HTTP_STATUS.
+- 2026-09-04: Restored `ClipConfig.from_file()` + `GitSync()` constructor per code review — removes hardcoded vault path, uses config.toml as single source of truth. Fixed markdown field to match PR #15 (not REQUIRED). Rewrote API notes.
+- 2026-09-03-v2: Changed to `ClipConfig.from_env()` + `GitSync.preflight()`. Added doubao.com example. (Reverted — see v3.)
+- 2026-09-03-v1: Created from session where Zhihu article was clipped via web_extract fallback.

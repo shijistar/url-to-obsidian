@@ -117,6 +117,7 @@ class ClipConfig:
     images: Path
     sync_branch: str
     lock_file: Path
+    pending_root: Path
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "ClipConfig":
@@ -136,21 +137,27 @@ class ClipConfig:
         sync_branch = values.get("WEB_TO_OBSIDIAN_SYNC_BRANCH", "master").strip()
         if not sync_branch or not _SAFE_BRANCH_NAME.fullmatch(sync_branch):
             raise ClipError("The configured Git sync branch is unsafe.")
-        default_lock = (
-            Path("~/.local/state/web-to-obsidian").expanduser()
-            / f"{hashlib.sha256(str(vault).encode('utf-8')).hexdigest()[:16]}.lock"
-        )
+        default_lock = Path(
+            "~/.hermes/workspace/cache/url-to-obsidian/vault.lock"
+        ).expanduser()
         lock_file = Path(
             values.get("WEB_TO_OBSIDIAN_LOCK_FILE", str(default_lock))
         ).expanduser().resolve()
         if lock_file == vault or vault in lock_file.parents:
             raise ClipError("The shared lock file must be outside the Obsidian vault.")
+        default_pending_root = Path(
+            "~/.hermes/workspace/cache/url-to-obsidian/pending-state"
+        ).expanduser()
+        pending_root = Path(
+            values.get("WEB_TO_OBSIDIAN_PENDING_ROOT", str(default_pending_root))
+        ).expanduser().resolve()
         return cls(
             vault=vault,
             destination=destination,
             images=images,
             sync_branch=sync_branch,
             lock_file=lock_file,
+            pending_root=pending_root,
         )
 
     @classmethod
@@ -164,7 +171,7 @@ class ClipConfig:
         section = data.get("clip")
         if not isinstance(section, dict):
             raise ClipError("The plugin config.toml must contain a [clip] table.")
-        supported = {"vault", "destination", "images", "sync_branch", "lock_file"}
+        supported = {"vault", "destination", "images", "sync_branch", "lock_file", "pending_root"}
         if set(section) - supported or any(
             not isinstance(value, str) for value in section.values()
         ):
@@ -177,6 +184,8 @@ class ClipConfig:
         }
         if "lock_file" in section:
             mapping["WEB_TO_OBSIDIAN_LOCK_FILE"] = section["lock_file"]
+        if "pending_root" in section:
+            mapping["WEB_TO_OBSIDIAN_PENDING_ROOT"] = section["pending_root"]
         return cls.from_env(mapping)
 
 
@@ -921,15 +930,6 @@ def github_blob_url(origin_url: str, branch: str, relative_path: str) -> str | N
     )
 
 
-def _pending_root(env: Mapping[str, str] | None) -> Path:
-    raw = (
-        env.get("WEB_TO_OBSIDIAN_PENDING_ROOT")
-        if env is not None and "WEB_TO_OBSIDIAN_PENDING_ROOT" in env
-        else "~/.hermes/workspace/cache/url-to-obsidian/pending-state"
-    )
-    return Path(raw).expanduser().resolve()
-
-
 def _active_pending_pointer(root: Path) -> Path:
     return root / "active.json"
 
@@ -1615,10 +1615,26 @@ def _extractor_environment() -> dict[str, str]:
     return child
 
 
+def _extractor_dir(plugin_root: Path) -> Path:
+    """Locate the standalone Node.js extractor package.
+
+    The extractor is a sibling of the Hermes plugin package in the source
+    repository (``extractor/`` at the repo root, ``plugin/`` beside it). A
+    legacy layout where the plugin lived directly at the repo root is also
+    tolerated, in which case the extractor is a direct subdirectory of
+    *plugin_root*.
+    """
+    direct = plugin_root / "extractor"
+    if (direct / "src" / "cli.mjs").is_file():
+        return direct
+    return plugin_root.parent / "extractor"
+
+
 def run_extractor(
     plugin_root: Path, url: str, no_browser: bool = False
 ) -> dict[str, object]:
-    command = ["node", str(plugin_root / "extractor" / "src" / "cli.mjs"), url]
+    extractor_dir = _extractor_dir(plugin_root)
+    command = ["node", str(extractor_dir / "src" / "cli.mjs"), url]
     if no_browser:
         command.append("--no-browser")
     result = _run_bounded(
@@ -1626,7 +1642,7 @@ def run_extractor(
         timeout=EXTRACTOR_TIMEOUT,
         stdout_limit=MAX_STDOUT_BYTES,
         stderr_limit=MAX_STDERR_BYTES,
-        cwd=plugin_root / "extractor",
+        cwd=extractor_dir,
         env=_extractor_environment(),
     )
     try:
@@ -2096,14 +2112,29 @@ class ClipService:
         )
         return destination
 
+    @staticmethod
+    def _publish_date(article: Mapping[str, object], fallback: str) -> str:
+        """Return the article's published date if valid, otherwise *fallback*."""
+        published = str(article.get("published") or "").strip()
+        if published:
+            # Accept full ISO timestamps like "2026-05-20T01:20:46+00:00" and bare dates
+            date_part = published[:10]
+            try:
+                datetime.strptime(date_part, "%Y-%m-%d")
+                return date_part
+            except ValueError:
+                pass
+        return fallback
+
     def _target_for(self, config: ClipConfig, article: Mapping[str, object], capture_date: str) -> Path:
         destination = self._ensure_destination(config)
         source = str(article["canonicalUrl"] or article["url"])
+        date_prefix = self._publish_date(article, capture_date)
         return choose_target(
             destination,
             str(article["title"]),
             source,
-            capture_date=capture_date,
+            capture_date=date_prefix,
         )
 
     def _result_with_github_url(
@@ -2191,7 +2222,7 @@ class ClipService:
                 images=str(config.images),
                 sync_branch=config.sync_branch,
             )
-            _store_pending_state(_pending_root(self.env), state)
+            _store_pending_state(config.pending_root, state)
             return PendingClipResult(str(article["title"]), len(remote_images))
         content_markdown = source_markdown
         image_mode = None
@@ -2225,7 +2256,7 @@ class ClipService:
             raise
 
     def _resume_locked(self, config: ClipConfig, decision: str) -> ClipResult:
-        pending_root = _pending_root(self.env)
+        pending_root = config.pending_root
         state = _load_pending_state(pending_root)
         if not state.matches_config(config):
             raise ClipError(

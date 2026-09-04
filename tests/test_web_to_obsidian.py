@@ -111,6 +111,47 @@ class ConfigAndFilenameTests(unittest.TestCase):
             config = clip.ClipConfig.from_env({"WEB_TO_OBSIDIAN_VAULT": str(vault)})
             self.assertEqual(config.destination, vault / "Inbox")
 
+    def test_pending_root_reads_from_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            pending_root = Path(tmp) / "state"
+            config = clip.ClipConfig.from_env(
+                {
+                    "WEB_TO_OBSIDIAN_VAULT": str(vault),
+                    "WEB_TO_OBSIDIAN_PENDING_ROOT": str(pending_root),
+                }
+            )
+            self.assertEqual(config.pending_root, pending_root.resolve())
+
+    def test_pending_root_defaults_outside_vault(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            config = clip.ClipConfig.from_env({"WEB_TO_OBSIDIAN_VAULT": str(vault)})
+            self.assertNotEqual(config.pending_root, vault)
+            self.assertNotIn(vault, config.pending_root.parents)
+
+    def test_pending_root_from_toml_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vault = root / "vault"
+            vault.mkdir()
+            pending_root = root / "custom-pending-state"
+            config_path = root / "config.toml"
+            config_path.write_text(
+                "[clip]\n"
+                f'vault = "{vault}"\n'
+                'destination = "Inbox"\n'
+                'images = "images"\n'
+                'sync_branch = "master"\n'
+                f'lock_file = "{root / "vault.lock"}"\n'
+                f'pending_root = "{pending_root}"\n',
+                encoding="utf-8",
+            )
+            config = clip.ClipConfig.from_file(config_path)
+            self.assertEqual(config.pending_root, pending_root.resolve())
+
     def test_filename_removes_traversal_controls_and_forbidden_characters(self):
         name = clip.safe_filename("  ../A:<B>\\C/\x00\n...  ", "https://example.com/x")
         self.assertTrue(name.endswith(".md"))
@@ -545,7 +586,7 @@ class ExtractorTests(unittest.TestCase):
 
         with mock.patch.object(clip.subprocess, "Popen", return_value=process) as popen:
             result = clip.run_extractor(
-                Path("/plugins/web-to-obsidian"),
+                Path("/plugins/web-to-obsidian/plugin"),
                 "https://example.com/article",
                 no_browser=True,
             )
