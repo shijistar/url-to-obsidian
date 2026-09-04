@@ -66,20 +66,18 @@ npm run check             # node --check on each src module
 
 ## Versioning rules
 
-The project tracks versions in **four** places:
+The project tracks module versions in **three** places. The CHANGELOG uses
+**date headings** (`## YYYY-MM-DD`), not version numbers:
 
 | Place | Field | Current |
 |-------|-------|---------|
 | `plugin/plugin.yaml` | `version` | 0.5.0 |
 | `extractor/package.json` | `version` | 0.2.0 |
 | `skill/SKILL.md` | frontmatter `version` | 1.3.0 |
-| `CHANGELOG.md` | `## [<ver>] - <date>` headings | 0.6.0 latest |
+| `CHANGELOG.md` | `## YYYY-MM-DD` headings | 2026-09-03 latest |
 
-**Known inconsistency (as of 2026-09-04, do not further diverge):**
-`plugin/plugin.yaml` (0.5.0) and the CHANGELOG (0.6.0) are out of sync, and the
-CHANGELOG 0.6.0 entry records the skill version as 1.2.0 while `SKILL.md` is
-1.3.0. Every change must move these toward/keep them in sync — never widen the
-gap.
+Module versions are independent of each other and of the CHANGELOG; there is
+no requirement that they match a changelog heading.
 
 ## Mandatory rules
 
@@ -106,14 +104,13 @@ Any **new feature or behavior change** MUST:
 1. bump the `version` of every module the change touches
    (`plugin/plugin.yaml`, `extractor/package.json`, `skill/SKILL.md` —
    bump only what the change actually touches);
-2. add a matching `## [<new-version>] - <date>` entry in `CHANGELOG.md`
-   describing the change (Keep a Changelog format);
-3. keep the bumped versions consistent with the CHANGELOG (same version
-   number, same change description).
+2. add a `## YYYY-MM-DD` entry in `CHANGELOG.md` (use today's date) describing
+   the change, under the existing changelog conventions. If an entry for that
+   date already exists, append the change to it (multiple changes on the same
+   date share one heading).
 
 Pure docs/refactor changes that do not alter behavior do not require a version
-bump, but a CHANGELOG note under the still-current version is encouraged when
-user-visible.
+bump, but a CHANGELOG entry is encouraged when user-visible.
 
 ## Git workflow
 
