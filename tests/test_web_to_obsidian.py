@@ -545,7 +545,7 @@ class ExtractorTests(unittest.TestCase):
 
         with mock.patch.object(clip.subprocess, "Popen", return_value=process) as popen:
             result = clip.run_extractor(
-                Path("/plugins/web-to-obsidian"),
+                Path("/plugins/web-to-obsidian/plugin"),
                 "https://example.com/article",
                 no_browser=True,
             )

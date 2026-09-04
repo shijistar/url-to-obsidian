@@ -1616,10 +1616,26 @@ def _extractor_environment() -> dict[str, str]:
     return child
 
 
+def _extractor_dir(plugin_root: Path) -> Path:
+    """Locate the standalone Node.js extractor package.
+
+    The extractor is a sibling of the Hermes plugin package in the source
+    repository (``extractor/`` at the repo root, ``plugin/`` beside it). A
+    legacy layout where the plugin lived directly at the repo root is also
+    tolerated, in which case the extractor is a direct subdirectory of
+    *plugin_root*.
+    """
+    direct = plugin_root / "extractor"
+    if (direct / "src" / "cli.mjs").is_file():
+        return direct
+    return plugin_root.parent / "extractor"
+
+
 def run_extractor(
     plugin_root: Path, url: str, no_browser: bool = False
 ) -> dict[str, object]:
-    command = ["node", str(plugin_root / "extractor" / "src" / "cli.mjs"), url]
+    extractor_dir = _extractor_dir(plugin_root)
+    command = ["node", str(extractor_dir / "src" / "cli.mjs"), url]
     if no_browser:
         command.append("--no-browser")
     result = _run_bounded(
@@ -1627,7 +1643,7 @@ def run_extractor(
         timeout=EXTRACTOR_TIMEOUT,
         stdout_limit=MAX_STDOUT_BYTES,
         stderr_limit=MAX_STDERR_BYTES,
-        cwd=plugin_root / "extractor",
+        cwd=extractor_dir,
         env=_extractor_environment(),
     )
     try:
