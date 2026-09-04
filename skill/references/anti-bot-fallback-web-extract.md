@@ -18,54 +18,52 @@ result = web_extract([url])
 # result["results"][0]["content"] contains the Markdown/HTML
 ```
 
-2. **Build article dict** — all fields in `_validate_success_payload` limits dict MUST be non-empty strings:
+2. **Build article dict** (must pass `_validate_success_payload`):
 ```python
 article = {
     "ok": True,
-    "title": "...",          # REQUIRED, non-empty string
-    "author": "...",          # string, empty OK but must be present
-    "published": "...",       # string, empty OK
-    "description": "...",     # string, empty OK
-    "site": "...",            # string, empty OK
-    "canonicalUrl": url,        # REQUIRED, valid URL string
-    "keywords": [],             # list of strings, max 128
-    "url": url,                 # REQUIRED, valid URL string
+    "title": "...",          # required, non-empty
+    "author": "...",          # optional but recommended
+    "published": "...",       # ISO 8601, optional
+    "description": "...",     # optional
+    "site": "...",            # optional
+    "canonicalUrl": url,        # required, valid URL
+    "keywords": ["..."],       # list of strings, max 128
+    "url": url,                 # required, valid URL
     "wordCount": 1000,          # int >= 0
-    "method": "web_extract_fallback",  # REQUIRED, non-empty string
-    "markdown": "..."           # REQUIRED, non-empty string (actual content)
+    "method": "web_extract_fallback",  # required
+    "markdown": ""              # empty string is fine
 }
 ```
 
-**⚠️ Critical**: The `markdown` field MUST be a non-empty string containing the article content. `_validate_success_payload()` checks all fields in the limits dict — an empty or missing `markdown` raises `ClipError("The extractor returned incomplete or invalid article data.")`. The `content_markdown` parameter to `_persist_article()` is a separate arg; both must be set.
-
-3. **Call _persist_article directly** — use `ClipConfig.from_env()` and `GitSync.preflight()`:
+3. **Call _persist_article directly** — use `ClipConfig.from_file()` and `GitSync()` constructor:
 ```python
-import sys; sys.path.insert(0, '.')
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime
 from web_to_obsidian import ClipService, ClipConfig, GitSync
 
-config = ClipConfig.from_env()  # NOT from_file()
-vault = Path.home() / 'obsidian' / 'shijistar'
-git_sync = GitSync.preflight(vault, config.sync_branch)  # NOT GitSync(vault=..., repo_root=..., branch=...)
+plugin_root = Path('.')
+config = ClipConfig.from_file(plugin_root / 'config.toml')
+git_sync = GitSync(vault=config.vault, repo_root=config.vault, branch=config.sync_branch)
 
-service = ClipService(Path('.'))
+service = ClipService(plugin_root)
 result = service._persist_article(
     config=config,
     article=article,
-    captured_at=datetime.now(timezone.utc),
+    captured_at=datetime.now(),
     refresh=False,
     git_sync=git_sync,
-    content_markdown=article["markdown"],  # same as markdown field
+    content_markdown=article["markdown"],
     image_mode=None,  # HTML <img> tags don't trigger Markdown image flow
+    generated_paths=[],
 )
 print(result.user_message())
 ```
 
-**⚠️ API gotchas** (discovered 2026-09-03):
-- `ClipConfig.from_env()` reads from env vars (WEB_TO_OBSIDIAN_VAULT etc.), NOT from config.toml
-- `GitSync.__init__()` requires 3 positional args: `vault`, `repo_root`, `branch`. Use `GitSync.preflight(vault, branch)` classmethod which auto-detects `repo_root` via `git rev-parse --show-toplevel`
-- `GitSync.preflight()` requires the branch to have an upstream — if not, push first with `git push -u origin <branch>`
+**⚠️ API notes**:
+- `ClipConfig.from_file()` reads from `config.toml` — the single source of truth for all config (vault, destination, images, sync_branch, lock_file, pending_root). No hardcoded paths.
+- `ClipConfig.from_env()` reads from env vars with hardcoded defaults — prefer `from_file()` for portability.
+- `GitSync(vault, repo_root, branch)` constructor requires all 3 positional args. Auto-detecting `repo_root` via `git rev-parse` is NOT built into the constructor; use `GitSync.preflight(vault, branch)` classmethod if you want that convenience (it also validates git state).
 - `generated_paths` is optional, defaults to `()`
 
 ## Key Points
@@ -73,6 +71,7 @@ print(result.user_message())
 - `image_mode=None` is correct when the extracted content has no Markdown `![](...)` images (only HTML `<img>`)
 - HTML `<img>` tags are NOT processed by the remote-image confirmation flow
 - This bypasses the `PendingClipResult` / `resume_pending()` flow entirely
+- The `markdown` field in article dict can be empty — the real content goes in `content_markdown` param
 - Requires: `ok: true`, `method: non-empty`, valid `canonicalUrl` and `url`, non-empty `title`
 
 ## Example: Doubao Article
@@ -89,8 +88,7 @@ article = {
     "keywords": [],
     "url": "https://www.doubao.com/thread/aa1278a169ca5",
     "wordCount": 200,
-    "method": "web_extract_fallback",
-    "markdown": "...actual content from web_extract..."
+    "method": "web_extract_fallback"
 }
 ```
 
@@ -101,5 +99,6 @@ article = {
 
 ## Version History
 
-- 2026-09-03-v2: Fixed API calls — `ClipConfig.from_env()` (not `from_file`), `GitSync.preflight()` (not constructor). Added `markdown` field non-empty requirement (was incorrectly documented as optional). Added doubao.com example.
+- 2026-09-04: Restored `ClipConfig.from_file()` + `GitSync()` constructor per code review — removes hardcoded vault path, uses config.toml as single source of truth. Fixed markdown field to match PR #15 (not REQUIRED). Rewrote API notes.
+- 2026-09-03-v2: Changed to `ClipConfig.from_env()` + `GitSync.preflight()`. Added doubao.com example. (Reverted — see v3.)
 - 2026-09-03-v1: Created from session where Zhihu article was clipped via web_extract fallback.
