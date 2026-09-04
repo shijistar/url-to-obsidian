@@ -4,6 +4,20 @@ All notable changes to the url-to-obsidian plugin will be documented in this fil
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 2026-09-04
+
+### Added
+- **AGENTS.md project working guide** — repo-level guide for humans and AI agents: module map, directory layout, build/test commands, versioning rules, Git workflow, safety invariants, and two mandatory rules (unit tests required for features/fixes; version bumps + CHANGELOG updates required for behavior changes).
+- **`web-clip-to-obsidian` skill descriptions & reference keywords clarified** — `skill/SKILL.md` and `skill/README.md` updated for clarity.
+- **`config.toml` `pending_root` support** — `ClipConfig.from_file()` now accepts `pending_root`; `config.toml`/`config.example.toml` enable `lock_file` and add `pending_root`. All 6 env vars (`VAULT`, `DEST`, `IMAGES`, `SYNC_BRANCH`, `LOCK_FILE`, `PENDING_ROOT`) now have `config.toml` equivalents — single source of truth.
+- **`markdown` field restored as validated payload input** — `source_markdown` is again taken from the validated `markdown` field (previously extracted separately in `render_note`, which excluded it from frontmatter).
+
+### Changed
+- **Plugin files restructured into `plugin/` subdirectory** — `__init__.py`, `web_to_obsidian.py`, `plugin.yaml`, `config.toml`, `config.example.toml` moved from the repo root into `plugin/`. `tests/conftest.py` injects `plugin/` into `sys.path`; `tests/test_plugin.py` points at `plugin/__init__.py`.
+- **Extractor located as sibling of the plugin package** — `run_extractor()` now resolves `extractor/` via `plugin_root.parent / "extractor"` (with a legacy fallback for `plugin_root/extractor`), so the Hermes plugin works after the restructure.
+- **READMEs split by submodule** — added `plugin/README.md`, `extractor/README.md`, `skill/README.md`; rewrote root `README.md` as a project overview with the new repository layout and quick start.
+- **CHANGELOG switched to date headings** — entries now use `## YYYY-MM-DD` instead of `## [<version>] - <date>`; module versions (plugin.yaml, package.json, SKILL.md) are independent of the CHANGELOG.
+
 ## 2026-09-03
 
 ### Added
