@@ -31,22 +31,22 @@ The skill is designed to be used together with the plugin symlink
 
 ## Reference index
 
-| File | Covers |
-|------|--------|
-| `references/anti-bot-fallback-web-extract.md` | When the Node extractor is blocked (Zhihu, Doubao), fall back to `web_extract` + `_persist_article()` |
-| `references/batch-processing.md` | Proven workflow for clipping 10+ articles sequentially |
-| `references/git-sync-testing-pattern.md` | Git safety tests require an upstream branch |
-| `references/github-private-blob-url-and-image-mode.md` | GitHub blob preview URLs and `image_mode` metadata semantics |
-| `references/netease-embedded-state-author.md` | Netease author/published extraction from embedded JSON state |
-| `references/netease-placeholder-and-video-links.md` | Netease `empty.png` placeholder images and anti-scrape video short links |
-| `references/pending-resume-fallback.md` | Stale pending-state directory lock and fallbacks |
-| `references/profile-skill-vs-source-repo-sync.md` | Keeping the profile skill in sync with the source repo |
-| `references/repo-linked-maintenance.md` | Maintenance implications of symlinking the skill/plugin from a Git repo |
-| `references/wsl-chrome-cdp-extraction.md` | WSL Chrome CDP extraction path |
-| `references/zhihu-cookie-and-scraper-diagnostics.md` | Layered Zhihu cookie/fetch/browser diagnostics |
+| File                                                   | Covers                                                                                                |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `references/anti-bot-fallback-web-extract.md`          | When the Node extractor is blocked (Zhihu, Doubao), fall back to `web_extract` + `_persist_article()` |
+| `references/batch-processing.md`                       | Proven workflow for clipping 10+ articles sequentially                                                |
+| `references/git-sync-testing-pattern.md`               | Git safety tests require an upstream branch                                                           |
+| `references/github-private-blob-url-and-image-mode.md` | GitHub blob preview URLs and `image_mode` metadata semantics                                          |
+| `references/netease-embedded-state-author.md`          | Netease author/published extraction from embedded JSON state                                          |
+| `references/netease-placeholder-and-video-links.md`    | Netease `empty.png` placeholder images and anti-scrape video short links                              |
+| `references/pending-resume-fallback.md`                | Stale pending-state directory lock and fallbacks                                                      |
+| `references/profile-skill-vs-source-repo-sync.md`      | Keeping the profile skill in sync with the source repo                                                |
+| `references/repo-linked-maintenance.md`                | Maintenance implications of symlinking the skill/plugin from a Git repo                               |
+| `references/wsl-chrome-cdp-extraction.md`              | WSL Chrome CDP extraction path                                                                        |
+| `references/zhihu-cookie-and-scraper-diagnostics.md`   | Layered Zhihu cookie/fetch/browser diagnostics                                                        |
 
 ## Trigger phrases
 
-The skill activates on intent like "抓取到obsidian" / "clip to obsidian" /
-"save to vault" / "web clip" / "剪藏", or when a URL is shared with the
+The skill activates on intent like "clip to obsidian" /
+"save to vault" / "web clip" / "抓取到obsidian" / "剪藏" / "抓取<url>", or when a URL is shared with the
 intent to archive it.

@@ -1,8 +1,8 @@
 ---
 name: web-clip-to-obsidian
-description: Clip web articles to the Obsidian vault via the url-to-obsidian plugin — extract, confirm images, save as dated markdown, commit & push to Git. Use when the user shares a URL wanting to save/read-later in Obsidian, or says "抓取到obsidian"/"clip to obsidian"/"save to vault".
+description: Clip web articles to the Obsidian vault via the url-to-obsidian plugin — extract, confirm images, save as dated markdown, commit & push to Git. Use when the user shares a URL wanting to save/read-later in Obsidian, or says "clip to obsidian"/"save to vault"/"抓取到obsidian"/"剪藏"/"抓取<url>".
 version: 1.3.0
-author: Hermes Agent
+author: Hermes Agent / Fengbao Li
 metadata:
   hermes:
     tags: [obsidian, web-clip, productivity, content-management, juejin, reading]
@@ -15,7 +15,7 @@ Clip web articles to the user's Obsidian vault using the `url-to-obsidian` plugi
 ## When to Use
 
 - User shares a URL with intent to save it to Obsidian
-- Keywords: "抓取到obsidian", "clip to obsidian", "save to vault", "web clip", "剪藏"
+- Keywords: "clip to obsidian", "save to vault", "web clip", "抓取到obsidian", "抓取<url>", "剪藏"
 - User pastes a link from Juejin, WeChat, Zhihu, or any web source wanting to archive it
 
 ## Plugin Location & Config
@@ -30,6 +30,7 @@ Config:          <source repo>/config.toml
 ```
 
 Deploy via symlink (not copies):
+
 ```bash
 ln -s ~/.hermes/workspace/repository/url-to-obsidian \
       ~/.hermes/profiles/<profile>/plugins/web-to-obsidian
@@ -40,6 +41,7 @@ ln -s ~/.hermes/workspace/repository/url-to-obsidian/skill \
 `config.toml` lives in the source repo root but is `.gitignored` — each profile keeps its own local config. After symlink setup, copy or create `config.toml` in the source repo root.
 
 Default config:
+
 ```toml
 [clip]
 vault = "~/obsidian/shijistar"
@@ -87,6 +89,7 @@ print(result.user_message())
 ```
 
 CLI shortcut (string handler):
+
 ```bash
 cd ~/.hermes/profiles/<profile>/plugins/web-to-obsidian && \
 python3 -c "
@@ -127,6 +130,7 @@ print(result.user_message())
 ```
 
 `ClipResult.user_message()` produces human-readable output with:
+
 - File path relative to vault
 - Git state (committed/pushed/unchanged/failed)
 - GitHub URL for preview (when available)
@@ -167,7 +171,6 @@ print(result.user_message())
 
 Commits use the article title: `clip: <title>` (truncated to 60 chars). The `finalize()` method accepts an optional `commit_message` parameter; when `None`, falls back to `clip: save web article`. The `_persist_article()` method auto-generates the message from the article title.
 
-
 ## Filename Date Prefix
 
 New clips use the article's **published date** (from frontmatter `published` field) as the filename date prefix, falling back to the capture date when published date is unavailable or invalid. Implemented in `ClipService._publish_date()` (PR #15 on url-to-obsidian).
@@ -179,5 +182,6 @@ New clips use the article's **published date** (from frontmatter `published` fie
 ## Post-Clip
 
 After article is saved and pushed:
+
 1. Show the GitHub vault URL from `ClipResult.github_url`
 2. Update any tracking (e.g., reading list) if user maintains one
