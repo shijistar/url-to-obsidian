@@ -71,10 +71,10 @@ The project tracks module versions in **three** places. The CHANGELOG uses
 
 | Place | Field | Current |
 |-------|-------|---------|
-| `plugin/plugin.yaml` | `version` | 0.5.0 |
+| `plugin/plugin.yaml` | `version` | 0.5.1 |
 | `extractor/package.json` | `version` | 0.2.0 |
-| `skill/SKILL.md` | frontmatter `version` | 1.3.0 |
-| `CHANGELOG.md` | `## YYYY-MM-DD` headings | 2026-09-03 latest |
+| `skill/SKILL.md` | frontmatter `version` | 1.4.0 |
+| `CHANGELOG.md` | `## YYYY-MM-DD` headings | 2026-09-05 latest |
 
 Module versions are independent of each other and of the CHANGELOG; there is
 no requirement that they match a changelog heading.

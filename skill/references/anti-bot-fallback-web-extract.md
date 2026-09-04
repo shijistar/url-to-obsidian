@@ -23,16 +23,16 @@ result = web_extract([url])
 article = {
     "ok": True,
     "title": "...",          # required, non-empty
-    "author": "...",          # optional but recommended
-    "published": "...",       # ISO 8601, optional
-    "description": "...",     # optional
-    "site": "...",            # optional
+    "author": "...",          # required string (may be empty "")
+    "published": "...",       # required string (may be empty ""; ISO 8601 when set)
+    "description": "...",     # required string (may be empty "")
+    "site": "...",            # required string (may be empty "")
     "canonicalUrl": url,        # required, valid URL
     "keywords": ["..."],       # list of strings, max 128
     "url": url,                 # required, valid URL
     "wordCount": 1000,          # int >= 0
-    "method": "web_extract_fallback",  # required
-    "markdown": ""              # empty string is fine
+    "method": "web_extract_fallback",  # required, non-empty
+    "markdown": ""              # required string (may be empty "")
 }
 ```
 

@@ -4,6 +4,16 @@ All notable changes to the url-to-obsidian plugin will be documented in this fil
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 2026-09-05
+
+### Fixed
+- **`pending_root` from config now actually applies** — `ClipConfig` carries `pending_root` (read from `config.toml` via `WEB_TO_OBSIDIAN_PENDING_ROOT`), and `_run_locked()` / `_resume_locked()` use `config.pending_root` instead of the hard-coded default. Removed the now-unused `_pending_root()` helper. Covered by new unit tests (env, TOML, default-outside-vault).
+
+### Changed
+- **Skill guidance de-risked for data safety and injection** — removed the blanket `git checkout -- .` batch-cleanup advice in favor of inspect-dirty-worktree + targeted cleanup of generated paths only (`inbox/`, `images/`); batch scripts now pass URL/image flags as arguments instead of interpolating them into Python source; Chrome cleanup stops only the debug instance by PID/`--user-data-dir` instead of all `chrome` processes.
+- **Docs aligned with the restructured repo** — `skill/SKILL.md` config path now points at `plugin/config.toml` (tracked, not `.gitignored`) and the deploy symlink targets `plugin/`; `extractor/README.md` documents `npx playwright install chromium`; anti-bot fallback docs mark `author`/`published`/`description`/`site`/`markdown` as required (may be empty).
+- **CHANGELOG merged the two `2026-07-26` headings** into one.
+
 ## 2026-09-04
 
 ### Added
@@ -47,15 +57,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **WeChat article curl fallback** — when Node.js extractor fails for `mp.weixin.qq.com` URLs, automatically falls back to curl-based extraction: fetches raw HTML, parses metadata (title, author, publish time) and body (`js_content` div) via regex, converts HTML to Markdown. No manual intervention needed.
 - `_is_wechat_url()`, `_fetch_wechat_html()`, `_parse_wechat_html()`, `_wechat_html_to_markdown()`, `_count_words()`, `run_extractor_with_fallback()` functions
 - 11 unit tests for WeChat extraction pipeline
+- `commit_message` parameter to `GitSync.finalize()` — commit messages now include the article title (e.g. `clip: <title>`) instead of a generic `clip: save web article`
+- `skill/` directory with Hermes skill documentation for web-clip-to-obsidian workflow
 
 ### Changed
 - `_run_locked()` now calls `run_extractor_with_fallback()` instead of `run_extractor()` directly
-
-## 2026-07-26
-
-### Added
-- `commit_message` parameter to `GitSync.finalize()` — commit messages now include the article title (e.g. `clip: <title>`) instead of a generic `clip: save web article`
-- `skill/` directory with Hermes skill documentation for web-clip-to-obsidian workflow
 
 ## 2026-07-25
 

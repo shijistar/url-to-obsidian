@@ -12,25 +12,32 @@ The `execute_code` tool has a hard 300-second timeout. Processing 10+ articles s
 ```bash
 cat > /tmp/batch_clip.sh << 'SCRIPT'
 #!/bin/bash
+set -euo pipefail
 cd ~/.hermes/workspace/repository/url-to-obsidian
 VAULT=~/obsidian/shijistar
 
 clip_one() {
     local url="$1" imgs="$2" label="$3"
-    cd "$VAULT" && git checkout -- . 2>/dev/null
-    cd ~/.hermes/workspace/repository/url-to-obsidian
+    # Never discard user changes: refuse a dirty vault worktree up front.
+    if ! git -C "$VAULT" diff --quiet --ignore-submodules HEAD 2>/dev/null || \
+       [ -n "$(git -C "$VAULT" status --porcelain 2>/dev/null)" ]; then
+        echo "${label}. [${imgs}] ERROR|||Vault has uncommitted changes; refusing to overwrite them."
+        return 1
+    fi
     sleep 2
+    # Pass url/imgs as argv — never interpolate them into Python source.
     result=$(python3 -c "
 import sys; sys.path.insert(0, '.')
 from pathlib import Path
 from web_to_obsidian import ClipService
 service = ClipService(Path('.'))
+url, imgs = sys.argv[1], sys.argv[2]
 try:
-    result = service.run('${url} --save-images ${imgs} --no-browser')
+    result = service.run(f'{url} --save-images {imgs} --no-browser')
     print(type(result).__name__ + '|||' + result.user_message())
 except Exception as e:
     print('ERROR|||' + str(e))
-" 2>&1)
+" "$url" "$imgs" 2>&1)
     status=$(echo "$result" | cut -d'|' -f1)
     msg=$(echo "$result" | cut -d'|' -f3-)
     echo "${label}. [${imgs}] ${status}: ${msg}"
@@ -54,14 +61,19 @@ ClipError: Git protection requires an entirely clean worktree.
 
 **Root cause**: Failed local-images clips leave deleted image files on disk. When a clip with `--save-images yes` partially completes (downloads images but then fails during git commit), the images are deleted from the working tree but not staged. The next clip's `GitSync.preflight()` sees the dirty state and refuses to proceed.
 
-**Fix**: Clean the worktree between clips:
+**Fix**: Inspect the worktree **before** touching anything. Never run a blanket `git checkout -- .` — it would also discard any manual note edits you have not committed.
+
 ```bash
-cd ~/obsidian/shijistar && git checkout -- .
-# Verify clean:
-git status --short  # should be empty
+cd ~/obsidian/shijistar && git status --short
 ```
 
-Check `git status --short` — if output is non-empty, run `git checkout -- .` before the next clip.
+- If the output only lists generated paths under `Inbox/` and `images/` (failed-clip residue), clean *only* those known generated paths, verifying each path before discarding:
+  ```bash
+  git status --short | awk '{print $2}'  # review the exact list first
+  # then, only after confirming everything listed is generated content:
+  git checkout -- Inbox/ images/
+  ```
+- If the output contains anything else (a manual note edit, a new untracked file outside these dirs), **stop** — the vault has user changes. Commit or stash them manually, or fix the failing clip, rather than discarding them.
 
 ## Pitfall: Rate Limiting on 163.com
 
@@ -105,18 +117,40 @@ from web_to_obsidian import ClipService
 service = ClipService(Path('.'))
 vault = Path.home() / 'obsidian' / 'shijistar'
 
-def clean_vault():
-    subprocess.run(['git', 'checkout', '--', '.'], cwd=str(vault), capture_output=True)
+def clean_vault() -> bool:
+    """Return True when the vault is clean; never blanket-discard user edits.
+
+    If the worktree is dirty, list the paths and refuse: committing/stashing
+    or fixing the failed clip is up to the operator. Generated residue under
+    Inbox/ and images/ may be cleaned explicitly after review.
+    """
+    out = subprocess.run(
+        ['git', 'status', '--short'], cwd=str(vault), capture_output=True, text=True
+    ).stdout.strip()
+    if not out:
+        return True
+    paths = [line.split(maxsplit=1)[1] for line in out.splitlines() if line.strip()]
+    allowed_prefixes = ('Inbox/', 'images/')
+    if all(p.startswith(allowed_prefixes) for p in paths):
+        # Only failed-clip generated residue — safe to clean.
+        subprocess.run(
+            ['git', 'checkout', '--', 'Inbox/', 'images/'],
+            cwd=str(vault), capture_output=True,
+        )
+        return True
+    print(f"WARNING: vault has uncommitted changes outside generated paths: {paths}")
+    return False
 
 for idx, url, imgs in articles:  # imgs = "yes" or "no"
-    clean_vault()  # ensure clean before each clip
+    if not clean_vault():
+        print(f"{idx}. SKIP: vault dirty; commit/stash before continuing")
+        continue
     time.sleep(2)  # rate limit protection
     try:
         result = service.run(f'{url} --save-images {imgs} --no-browser')
         print(f"{idx}. OK: {result.user_message()[:100]}")
     except Exception as e:
         # Retry with --refresh in case of hash mismatch
-        clean_vault()
         time.sleep(3)
         try:
             result = service.run(f'{url} --save-images {imgs} --refresh --no-browser')

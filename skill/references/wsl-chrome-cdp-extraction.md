@@ -13,8 +13,9 @@ When SPA (Single Page Application) content can't be extracted via Node.js extrac
 ### 1. Launch Chrome with Remote Debugging
 
 ```powershell
-# Via PowerShell Start-Process (avoids WSL shell escaping issues)
-powershell.exe -Command "Start-Process 'C:\Program Files\Google\Chrome\Application\chrome.exe' -ArgumentList '--remote-debugging-port=9222','--no-first-run','--no-default-browser-check','--user-data-dir=C:\Users\<username>\chrome-debug','<TARGET_URL>'"
+# Via PowerShell Start-Process (avoids WSL shell escaping issues).
+# -PassThru returns the process so we can stop THIS instance later (Step 7).
+powershell.exe -Command "\$p = Start-Process 'C:\Program Files\Google\Chrome\Application\chrome.exe' -ArgumentList '--remote-debugging-port=9222','--no-first-run','--no-default-browser-check','--user-data-dir=C:\Users\<username>\chrome-debug','<TARGET_URL>' -PassThru; \$p.Id" > /tmp/chrome_debug_pid.txt
 ```
 
 **Important**: Chrome binds to Windows `127.0.0.1:9222`. WSL2 cannot access this via `localhost` or Windows host IP due to NAT networking. All CDP communication must go through PowerShell.
@@ -97,8 +98,18 @@ Use the decoded text file for further processing (split into articles, create ma
 
 ### 7. Close Chrome (Optional)
 
+Stop only the debug Chrome instance started in Step 1 — never `Stop-Process -Name chrome`, which kills the user's normal Chrome sessions. Use the saved PID:
+
 ```powershell
-powershell.exe -Command "Stop-Process -Name chrome -Force -ErrorAction SilentlyContinue"
+# PID captured by Start-Process -PassThru in Step 1
+$pid = Get-Content /tmp/chrome_debug_pid.txt
+powershell.exe -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue"
+```
+
+If the PID was not captured, fall back to filtering by the dedicated `--user-data-dir`:
+
+```powershell
+powershell.exe -Command "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Where-Object { \$_.CommandLine -like '*chrome-debug*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue }"
 ```
 
 ## Pitfalls

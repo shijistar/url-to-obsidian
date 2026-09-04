@@ -1,7 +1,7 @@
 ---
 name: web-clip-to-obsidian
 description: Clip web articles to the Obsidian vault via the url-to-obsidian plugin — extract, confirm images, save as dated markdown, commit & push to Git. Use when the user shares a URL wanting to save/read-later in Obsidian, or says "clip to obsidian"/"save to vault"/"抓取到obsidian"/"剪藏"/"抓取<url>".
-version: 1.3.0
+version: 1.4.0
 author: Hermes Agent / Fengbao Li
 metadata:
   hermes:
@@ -24,21 +24,25 @@ The **source repo** is the single source of truth. The installed plugin is a sym
 
 ```
 Source repo:     ~/.hermes/workspace/repository/url-to-obsidian/
-Plugin symlink:  ~/.hermes/profiles/<profile>/plugins/web-to-obsidian/ → source repo
+Plugin symlink:  ~/.hermes/profiles/<profile>/plugins/web-to-obsidian/ → source repo/plugin
 Skill symlink:   ~/.hermes/profiles/<profile>/skills/productivity/web-clip-to-obsidian/ → source repo/skill/
-Config:          <source repo>/config.toml
+Config:          <source repo>/plugin/config.toml
 ```
 
 Deploy via symlink (not copies):
 
 ```bash
-ln -s ~/.hermes/workspace/repository/url-to-obsidian \
+ln -s ~/.hermes/workspace/repository/url-to-obsidian/plugin \
       ~/.hermes/profiles/<profile>/plugins/web-to-obsidian
 ln -s ~/.hermes/workspace/repository/url-to-obsidian/skill \
       ~/.hermes/profiles/<profile>/skills/productivity/web-clip-to-obsidian
 ```
 
-`config.toml` lives in the source repo root but is `.gitignored` — each profile keeps its own local config. After symlink setup, copy or create `config.toml` in the source repo root.
+`config.toml` lives in the plugin package (`plugin/config.toml`) and is
+tracked in git with sensible defaults — each profile keeps its own local
+config by editing the file at the installed plugin path
+(`<profile>/plugins/web-to-obsidian/config.toml`) or copying the example:
+`cp plugin/config.example.toml plugin/config.toml` in the source repo.
 
 Default config:
 
@@ -164,7 +168,7 @@ print(result.user_message())
 - **`_persist_article()` requires `markdown` field in article dict**: The article dict passed to `_persist_article()` must include a `"markdown"` key (string) in addition to `content_markdown`. Without it, `_validate_success_payload()` raises `ClipError: The extractor returned incomplete or invalid article data.` The `markdown` field is part of the extractor's output schema and is validated even though `content_markdown` is the parameter used by `render_note()`. Always include both.
 - **Branch semantics (vault vs source repo)**: NEW article clips auto-commit + push directly to the vault's `sync_branch` (master by default) via the plugin's `finalize()` — that is the expected flow (user-confirmed direct-master exception for the Obsidian vault). Only MANUAL vault edits/backfills and changes to the `url-to-obsidian` source repo use feature branch + PR (backfill example: `backfill/netease-author` branch, user manually merged). Never force-push or rewrite history; if a repo rejects direct push due to branch protection, fall back to feature branch + PR.
 - **Git sync tests need upstream**: `GitSync.preflight()` requires the branch to have an upstream. In unit tests, always call `git push -u origin <branch>` after the initial commit, before calling `preflight()`.
-- **Batch processing pitfalls**: When clipping 10+ articles sequentially, the vault worktree can get dirty between clips (especially after failed local-images clips that leave deleted images on disk). Fix: run `git checkout -- .` in the vault before each clip. Also, 163.com and other sites rate-limit rapid sequential requests — add a 2-second delay between clips. See `references/batch-processing.md` for the full proven workflow (pre-extract → sequential clip with cleanup → summary table).
+- **Batch processing pitfalls**: When clipping 10+ articles sequentially, the vault worktree can get dirty between clips (especially after failed local-images clips that leave deleted images on disk). Never run a blanket `git checkout -- .` — it discards uncommitted manual note edits too. Inspect `git status --short` first: if it only shows generated residue under `Inbox/` and `images/`, clean only those paths (`git checkout -- Inbox/ images/`); if it shows any user edit, commit/stash it manually before continuing. Also, 163.com and other sites rate-limit rapid sequential requests — add a 2-second delay between clips. See `references/batch-processing.md` for the full proven workflow (pre-extract → sequential clip with cleanup → summary table).
 - **SPA / client-side rendered pages**: Some sites (e.g., kimi.com, certain modern SPAs) render content entirely via JavaScript — the HTML response contains no article content, only JS bundles. The Node.js extractor, `web_extract`, and curl all return empty/boilerplate. Without a real browser session, these cannot be extracted. Report to user as requiring manual browser access. Do NOT save the empty shell as a note.
 
 ## Commit Message

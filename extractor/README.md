@@ -11,6 +11,9 @@ plugin drives this extractor.
 
 - Node.js 18+ (package `engines.node: >=18`)
 - Locked dependencies from `package-lock.json` (`npm ci --ignore-scripts`)
+- Playwright Chromium for the browser fallback (`npx playwright install chromium`
+  after `npm ci` — `--ignore-scripts` intentionally skips the download that
+  Playwright's postinstall normally performs).
 
 ## Dependencies
 

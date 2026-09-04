@@ -117,6 +117,7 @@ class ClipConfig:
     images: Path
     sync_branch: str
     lock_file: Path
+    pending_root: Path
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "ClipConfig":
@@ -144,12 +145,19 @@ class ClipConfig:
         ).expanduser().resolve()
         if lock_file == vault or vault in lock_file.parents:
             raise ClipError("The shared lock file must be outside the Obsidian vault.")
+        default_pending_root = Path(
+            "~/.hermes/workspace/cache/url-to-obsidian/pending-state"
+        ).expanduser()
+        pending_root = Path(
+            values.get("WEB_TO_OBSIDIAN_PENDING_ROOT", str(default_pending_root))
+        ).expanduser().resolve()
         return cls(
             vault=vault,
             destination=destination,
             images=images,
             sync_branch=sync_branch,
             lock_file=lock_file,
+            pending_root=pending_root,
         )
 
     @classmethod
@@ -920,15 +928,6 @@ def github_blob_url(origin_url: str, branch: str, relative_path: str) -> str | N
         f"https://github.com/{owner}/{repo}/blob/{quote(branch, safe='')}/"
         f"{quote(relative_path, safe='/')}"
     )
-
-
-def _pending_root(env: Mapping[str, str] | None) -> Path:
-    raw = (
-        env.get("WEB_TO_OBSIDIAN_PENDING_ROOT")
-        if env is not None and "WEB_TO_OBSIDIAN_PENDING_ROOT" in env
-        else "~/.hermes/workspace/cache/url-to-obsidian/pending-state"
-    )
-    return Path(raw).expanduser().resolve()
 
 
 def _active_pending_pointer(root: Path) -> Path:
@@ -2223,7 +2222,7 @@ class ClipService:
                 images=str(config.images),
                 sync_branch=config.sync_branch,
             )
-            _store_pending_state(_pending_root(self.env), state)
+            _store_pending_state(config.pending_root, state)
             return PendingClipResult(str(article["title"]), len(remote_images))
         content_markdown = source_markdown
         image_mode = None
@@ -2257,7 +2256,7 @@ class ClipService:
             raise
 
     def _resume_locked(self, config: ClipConfig, decision: str) -> ClipResult:
-        pending_root = _pending_root(self.env)
+        pending_root = config.pending_root
         state = _load_pending_state(pending_root)
         if not state.matches_config(config):
             raise ClipError(
