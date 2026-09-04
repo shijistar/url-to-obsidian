@@ -136,10 +136,9 @@ class ClipConfig:
         sync_branch = values.get("WEB_TO_OBSIDIAN_SYNC_BRANCH", "master").strip()
         if not sync_branch or not _SAFE_BRANCH_NAME.fullmatch(sync_branch):
             raise ClipError("The configured Git sync branch is unsafe.")
-        default_lock = (
-            Path("~/.local/state/web-to-obsidian").expanduser()
-            / f"{hashlib.sha256(str(vault).encode('utf-8')).hexdigest()[:16]}.lock"
-        )
+        default_lock = Path(
+            "~/.hermes/workspace/cache/url-to-obsidian/vault.lock"
+        ).expanduser()
         lock_file = Path(
             values.get("WEB_TO_OBSIDIAN_LOCK_FILE", str(default_lock))
         ).expanduser().resolve()
@@ -164,7 +163,7 @@ class ClipConfig:
         section = data.get("clip")
         if not isinstance(section, dict):
             raise ClipError("The plugin config.toml must contain a [clip] table.")
-        supported = {"vault", "destination", "images", "sync_branch", "lock_file"}
+        supported = {"vault", "destination", "images", "sync_branch", "lock_file", "pending_root"}
         if set(section) - supported or any(
             not isinstance(value, str) for value in section.values()
         ):
@@ -177,6 +176,8 @@ class ClipConfig:
         }
         if "lock_file" in section:
             mapping["WEB_TO_OBSIDIAN_LOCK_FILE"] = section["lock_file"]
+        if "pending_root" in section:
+            mapping["WEB_TO_OBSIDIAN_PENDING_ROOT"] = section["pending_root"]
         return cls.from_env(mapping)
 
 
