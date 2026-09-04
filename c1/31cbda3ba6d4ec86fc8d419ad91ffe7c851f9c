@@ -1,0 +1,17 @@
+skill/SKILL.md
+  h_99cad05bea77d1 3,5,18,33,44,92,133,185
+skill/README.md
+  h_99cad05bea77d1 35,50-51
+  h_99cad05bea77d1 34,36-46,52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "c131cbda3ba6d4ec86fc8d419ad91ffe7c851f9c",
+  "prompts": {},
+  "humans": {
+    "h_99cad05bea77d1": {
+      "author": "Fengbao Li <shijistar@gmail.com>"
+    }
+  }
+}
