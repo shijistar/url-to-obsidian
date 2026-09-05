@@ -23,7 +23,7 @@ def register(ctx) -> None:
     plugin_root = Path(__file__).resolve().parent
     handler = build_handler(plugin_root)
     ctx.register_command(
-        "clip",
+        "webclip",
         handler=handler,
         description="Clip a public web article into an Obsidian vault with guarded Git sync.",
         args_hint="<url> [--refresh] [--no-browser] [--no-git] [--save-images yes|no|ask]",

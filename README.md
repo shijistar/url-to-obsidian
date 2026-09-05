@@ -7,7 +7,7 @@ vault is a Git repository — synchronize the note with guarded automatic commit
 
 The project is a small monorepo of three parts:
 
-- [`plugin/`](plugin/README.md) — the Hermes plugin (`/clip` command +
+- [`plugin/`](plugin/README.md) — the Hermes plugin (`/webclip` command +
   `web_to_obsidian_resume_pending` tool) implementing config, safe vault
   writes, image handling, and Git synchronization.
 - [`extractor/`](extractor/README.md) — a hardened Node.js extraction engine
@@ -50,7 +50,7 @@ url-to-obsidian/
   static pages.
 - Remote HTTP(S) image references can either stay remote or be downloaded
   into the Vault.
-- The default `/clip <url>` flow asks for a follow-up yes/no decision only
+- The default `/webclip <url>` flow asks for a follow-up yes/no decision only
   when the final sanitized Markdown still contains remote images.
 - WeChat article URLs automatically fall back to curl-based extraction when
   the Node extractor is blocked.
@@ -84,9 +84,9 @@ hermes gateway restart
 Then clip articles:
 
 ```text
-/clip https://example.com/article
-/clip https://example.com/article --save-images yes
-/clip https://example.com/article --refresh
+/webclip https://example.com/article
+/webclip https://example.com/article --save-images yes
+/webclip https://example.com/article --refresh
 ```
 
 Full usage, flags, and safety documentation live in

@@ -1,4 +1,4 @@
-"""Safe vault-writing and Git synchronization for the ``/clip`` command."""
+"""Safe vault-writing and Git synchronization for the ``/webclip`` command."""
 
 from __future__ import annotations
 
@@ -344,7 +344,7 @@ def parse_clip_args(raw_args: str) -> ClipOptions:
     try:
         tokens = shlex.split(raw_args, posix=True)
     except ValueError as exc:
-        raise ClipError("Invalid quoting in /clip arguments.") from exc
+        raise ClipError("Invalid quoting in /webclip arguments.") from exc
 
     no_browser = False
     no_git = False
@@ -368,13 +368,13 @@ def parse_clip_args(raw_args: str) -> ClipOptions:
             if save_images not in {"yes", "no", "ask"}:
                 raise ClipError("The --save-images option only accepts yes, no, or ask.")
         elif token.startswith("-"):
-            raise ClipError("Unknown /clip option.")
+            raise ClipError("Unknown /webclip option.")
         else:
             urls.append(token)
         index += 1
     if len(urls) != 1:
         raise ClipError(
-            "Usage: /clip <url> [--refresh] [--no-browser] [--no-git] [--save-images yes|no|ask]"
+            "Usage: /webclip <url> [--refresh] [--no-browser] [--no-git] [--save-images yes|no|ask]"
         )
     _validate_http_url(urls[0])
     return ClipOptions(
@@ -1003,7 +1003,7 @@ def _load_pending_state(root: Path) -> PendingClipState:
     expires_at = datetime.fromisoformat(str(payload["expires_at"]))
     if datetime.now(timezone.utc) >= expires_at:
         _clear_pending(root, pending_id)
-        raise ClipError("The pending image confirmation expired; please run /clip again.")
+        raise ClipError("The pending image confirmation expired; please run /webclip again.")
     return PendingClipState(
         pending_id=str(payload["pending_id"]),
         created_at=str(payload["created_at"]),

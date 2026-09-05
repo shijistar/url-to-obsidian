@@ -71,7 +71,7 @@ untrusted extractor process.
 ## Usage
 
 ```text
-/clip <url> [--refresh] [--no-browser] [--no-git] [--save-images yes|no|ask]
+/webclip <url> [--refresh] [--no-browser] [--no-git] [--save-images yes|no|ask]
 ```
 
 - Exactly one public `http://` or `https://` URL is accepted.
@@ -83,7 +83,7 @@ untrusted extractor process.
   `images/<article-slug>/...` before saving the note.
 - `--save-images no` preserves remote image URLs and saves immediately.
 - Omitting `--save-images` behaves as `ask`: if the final sanitized Markdown
-  has remote `http/https` image references, `/clip` stores one pending
+  has remote `http/https` image references, `/webclip` stores one pending
   confirmation and waits for a plain `yes` or `no` reply via the registered
   `web_to_obsidian_resume_pending` tool. If no remote images remain, the note
   is saved immediately.
@@ -177,7 +177,7 @@ The plugin drives the Node extractor via `run_extractor_with_fallback()`:
 
 ## Git safety
 
-With Git enabled, `/clip` requires:
+With Git enabled, `/webclip` requires:
 
 1. the configured sync branch (the shipped default is `master`);
 2. no merge/rebase state;

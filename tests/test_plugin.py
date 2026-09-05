@@ -38,14 +38,14 @@ class PluginRegistrationTests(unittest.TestCase):
         finally:
             sys.modules.pop(spec.name, None)
 
-    def test_registers_clip_with_documented_hint_and_closed_over_handler(self):
+    def test_registers_webclip_with_documented_hint_and_closed_over_handler(self):
         plugin = self._load_plugin()
         context = FakeContext()
         plugin.register(context)
 
         self.assertEqual(len(context.command_calls), 1)
         args, kwargs = context.command_calls[0]
-        self.assertEqual(args, ("clip",))
+        self.assertEqual(args, ("webclip",))
         self.assertEqual(
             kwargs["args_hint"],
             "<url> [--refresh] [--no-browser] [--no-git] [--save-images yes|no|ask]",

@@ -26,7 +26,7 @@ url-to-obsidian/
 ├── CHANGELOG.md
 ├── README.md                 # project overview
 ├── plugin/                   # Hermes plugin (install target)
-│   ├── __init__.py           # entry point: /clip + resume tool
+│   ├── __init__.py           # entry point: /webclip + resume tool
 │   ├── web_to_obsidian.py    # core logic
 │   ├── plugin.yaml           # plugin metadata + version
 │   ├── config.toml           # local non-secret config (tracked)
