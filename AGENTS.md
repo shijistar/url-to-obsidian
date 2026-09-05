@@ -11,7 +11,7 @@ dated notes into an Obsidian vault, and synchronizes them via guarded Git.
 | `plugin/`    | Hermes plugin package: config, safe vault writes, image handling, Git sync | `__init__.py`, `web_to_obsidian.py`, `plugin.yaml`, `config.example.toml`, `config.toml`                          |
 | `extractor/` | Hardened Node.js extraction engine (Defuddle static + Playwright fallback) | `src/cli.mjs`, `src/extractor.mjs`, `src/network-policy.mjs`, `package.json`                                      |
 | `skill/`     | Hermes agent skill teaching the clip-to-Obsidian workflow                  | `SKILL.md`, `references/*.md`                                                                                     |
-| `tests/`     | Python plugin test suites                                                  | `conftest.py`, `test_web_to_obsidian.py`, `test_integration.py`, `test_plugin.py`, `test_security_regressions.py` |
+| `plugin/tests/` | Python plugin test suites                                                  | `conftest.py`, `test_web_to_obsidian.py`, `test_integration.py`, `test_plugin.py`, `test_security_regressions.py` |
 
 The extractor is a **sibling** of the plugin package, not a subdirectory:
 `plugin/` and `extractor/` both live at the repo root. At runtime the plugin
@@ -50,11 +50,11 @@ url-to-obsidian/
 ### Python plugin
 
 ```bash
-python3 -m pytest tests/ -v
+python3 -m pytest plugin/tests/ -v
 ```
 
-- `tests/conftest.py` injects `plugin/` into `sys.path` so `import
-web_to_obsidian` resolves to `plugin/web_to_obsidian.py`.
+- `plugin/tests/conftest.py` injects the plugin directory (its parent) into
+  `sys.path` so `import web_to_obsidian` resolves to `plugin/web_to_obsidian.py`.
 - Test suites: core unit tests (`test_web_to_obsidian.py`), real Git/vault
   integration (`test_integration.py`), plugin registration
   (`test_plugin.py`), and security regressions (`test_security_regressions.py`).
@@ -90,12 +90,12 @@ no requirement that they match a changelog heading.
 Every **new feature** or **bug fix** MUST ship with unit tests covering the
 changed behavior:
 
-- Python changes → add/update tests under `tests/` (choose the suite by
+- Python changes → add/update tests under `plugin/tests/` (choose the suite by
   concern: core logic, integration, plugin registration, or security
   regression).
 - Node extractor changes → add/update tests under `extractor/test/`.
 - Security-relevant changes → add a regression test in
-  `tests/test_security_regressions.py` or
+  `plugin/tests/test_security_regressions.py` or
   `extractor/test/security-regressions.test.mjs`, even if the change looks
   like a pure refactor.
 
@@ -138,7 +138,7 @@ these invariants on every change:
   `extractor/src/network-policy.mjs`.
 - **Path containment**: all writes must resolve inside the configured vault;
   symlink escapes and traversal must be rejected (covered by
-  `tests/test_web_to_obsidian.py` TargetAndAtomicWriteTests).
+  `plugin/tests/test_web_to_obsidian.py` TargetAndAtomicWriteTests).
 - **Secrets**: never log or forward credentials/tokens to the extractor child;
   the extractor receives only an allowlisted environment. Credential-like
   markers in extracted content must refuse to save.

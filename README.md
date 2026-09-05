@@ -83,7 +83,7 @@ npm run check
 
 # Python plugin (from repo root)
 cd ..
-python3 -m pytest tests/ -v
+python3 -m pytest plugin/tests/ -v
 ```
 
 The automated tests use fixtures, temporary directories, and temporary Git
