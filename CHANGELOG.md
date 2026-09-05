@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Skill guidance de-risked for data safety and injection** — removed the blanket `git checkout -- .` batch-cleanup advice in favor of inspect-dirty-worktree + targeted cleanup of generated paths only (`inbox/`, `images/`); batch scripts now pass URL/image flags as arguments instead of interpolating them into Python source; Chrome cleanup stops only the debug instance by PID/`--user-data-dir` instead of all `chrome` processes.
 - **Docs aligned with the restructured repo** — `skill/SKILL.md` config path now points at `plugin/config.toml` (tracked, not `.gitignored`) and the deploy symlink targets `plugin/`; `extractor/README.md` documents `npx playwright install chromium`; anti-bot fallback docs mark `author`/`published`/`description`/`site`/`markdown` as required (may be empty).
 - **CHANGELOG merged the two `2026-07-26` headings** into one.
+- **Plugin slash command renamed `/clip` → `/webclip`** — avoids colliding with the `clip` skill's auto-generated `/clip` command in Hermes (skills scan only skips built-in commands, not plugin commands). Plugin version bumped 0.5.1 → 0.6.0; skill 1.4.0 → 1.4.1; docs, error strings, and the plugin registration test updated. The `[clip]` config section name and `webclip_id` field are unchanged.
 
 ## 2026-09-04
 
