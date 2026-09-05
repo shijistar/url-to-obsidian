@@ -1,4 +1,4 @@
-# web-to-obsidian-extractor
+# web-clip-extractor
 
 The Node.js content-extraction engine for the web-to-obsidian Hermes plugin. It
 fetches a public web page over a hardened network policy and returns normalized
@@ -17,10 +17,10 @@ plugin drives this extractor.
 
 ## Dependencies
 
-| Package    | Purpose                                  |
-|------------|------------------------------------------|
-| `defuddle` | Primary static article extraction        |
-| `linkedom` | Lightweight DOM parsing (no browser)     |
+| Package      | Purpose                                   |
+| ------------ | ----------------------------------------- |
+| `defuddle`   | Primary static article extraction         |
+| `linkedom`   | Lightweight DOM parsing (no browser)      |
 | `playwright` | Isolated Chromium fallback for weak pages |
 
 ## CLI
@@ -50,27 +50,27 @@ Output is a single JSON line on stdout. On success:
 
 ### Error codes
 
-| Code                       | Meaning                                          |
-|----------------------------|--------------------------------------------------|
-| `INVALID_URL`              | The URL is malformed.                            |
-| `UNSUPPORTED_SCHEME`       | Only HTTP and HTTPS are allowed.                 |
-| `URL_CREDENTIALS`          | URLs containing credentials are rejected.        |
-| `NON_DEFAULT_PORT`         | Non-default ports are rejected.                  |
-| `DNS_FAILED`               | The hostname could not be resolved.              |
-| `BLOCKED_ADDRESS`          | Destination blocked by network policy.           |
-| `TOO_MANY_REDIRECTS`       | The page redirected too many times.              |
-| `INVALID_REDIRECT`         | The page returned an invalid redirect.           |
-| `TIMEOUT`                  | Extraction timed out.                            |
-| `NETWORK_ERROR`            | The page request failed.                         |
-| `HTTP_STATUS`              | The server returned an unsuccessful status.      |
-| `UNSUPPORTED_CONTENT_TYPE` | The response is not HTML.                        |
-| `UNSUPPORTED_ENCODING`     | The response uses an unsupported encoding.       |
-| `BODY_TOO_LARGE`           | The response body is too large.                  |
-| `INVALID_RESPONSE`         | The server returned an invalid response.         |
-| `EXTRACTION_FAILED`        | Article extraction failed.                       |
-| `QUALITY_GATE`             | The page did not contain a substantial article.  |
-| `BROWSER_FAILED`           | Browser extraction failed.                       |
-| `USAGE`                    | Bad command-line invocation.                     |
+| Code                       | Meaning                                         |
+| -------------------------- | ----------------------------------------------- |
+| `INVALID_URL`              | The URL is malformed.                           |
+| `UNSUPPORTED_SCHEME`       | Only HTTP and HTTPS are allowed.                |
+| `URL_CREDENTIALS`          | URLs containing credentials are rejected.       |
+| `NON_DEFAULT_PORT`         | Non-default ports are rejected.                 |
+| `DNS_FAILED`               | The hostname could not be resolved.             |
+| `BLOCKED_ADDRESS`          | Destination blocked by network policy.          |
+| `TOO_MANY_REDIRECTS`       | The page redirected too many times.             |
+| `INVALID_REDIRECT`         | The page returned an invalid redirect.          |
+| `TIMEOUT`                  | Extraction timed out.                           |
+| `NETWORK_ERROR`            | The page request failed.                        |
+| `HTTP_STATUS`              | The server returned an unsuccessful status.     |
+| `UNSUPPORTED_CONTENT_TYPE` | The response is not HTML.                       |
+| `UNSUPPORTED_ENCODING`     | The response uses an unsupported encoding.      |
+| `BODY_TOO_LARGE`           | The response body is too large.                 |
+| `INVALID_RESPONSE`         | The server returned an invalid response.        |
+| `EXTRACTION_FAILED`        | Article extraction failed.                      |
+| `QUALITY_GATE`             | The page did not contain a substantial article. |
+| `BROWSER_FAILED`           | Browser extraction failed.                      |
+| `USAGE`                    | Bad command-line invocation.                    |
 
 ## Extraction pipeline
 

@@ -1,18 +1,38 @@
 {
-  "name": "web-to-obsidian-extractor",
-  "version": "0.2.0",
-  "private": true,
+  "name": "@tiny-codes/web-clip-extractor",
+  "version": "0.2.0-alpha.1",
   "type": "module",
   "engines": {
     "node": ">=18"
   },
+  "keywords": [
+    "web",
+    "clip",
+    "extractor",
+    "obsidian"
+  ],
+  "homepage": "https://github.com/shijistar/url-to-obsidian",
+  "bugs": {
+    "url": "https://github.com/shijistar/url-to-obsidian/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shijistar/url-to-obsidian.git"
+  },
+  "license": "MIT",
+  "author": "Fengbao Li <shijistar@gmail.com>",
+  "sideEffects": false,
+  "files": [
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "test": "node --test",
     "check": "node --check src/cli.mjs && node --check src/extractor.mjs && node --check src/network-policy.mjs"
   },
   "dependencies": {
-    "defuddle": "0.19.2",
-    "linkedom": "0.18.13",
-    "playwright": "1.61.1"
+    "defuddle": "^0.19.2",
+    "linkedom": "^0.18.13",
+    "playwright": "^1.61.1"
   }
 }

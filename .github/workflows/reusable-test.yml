@@ -1,0 +1,36 @@
+name: Reusable Tests
+permissions:
+  contents: read
+on:
+  workflow_call: # This workflow can be called by other workflows
+    inputs:
+      node-version:
+        required: false
+        type: string
+        description: "Specific Node.js version for single test"
+        default: ""
+      use-matrix:
+        required: false
+        type: boolean
+        description: "Whether to run tests on multiple Node.js versions"
+        default: false
+
+jobs:
+  # Run tests on single specified Node.js version
+  run-test-single:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version || 24 }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests from source codes
+        run: npm test
