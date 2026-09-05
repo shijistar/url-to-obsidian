@@ -1,0 +1,14 @@
+.github/workflows/npm-publish.yml
+  h_99cad05bea77d1 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "fdba93bf5b8f6ebd05f5f78ddf1bdc3633db2f59",
+  "prompts": {},
+  "humans": {
+    "h_99cad05bea77d1": {
+      "author": "Fengbao Li <shijistar@gmail.com>"
+    }
+  }
+}
