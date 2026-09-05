@@ -1,6 +1,6 @@
 {
   "name": "@tiny-codes/web-clip-extractor",
-  "version": "0.2.0-alpha.1",
+  "version": "0.2.0",
   "type": "module",
   "engines": {
     "node": ">=18"
