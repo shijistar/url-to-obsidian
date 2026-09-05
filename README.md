@@ -37,23 +37,20 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 Requirements: `Hermes Agent`, `Python` 3.11+, `Node.js` 18+, `Git`, `PyYAML`.
 
+The one-shot installer (inside the plugin package) wires up the plugin, the
+extractor npm package, Playwright Chromium, and the skill symlink:
+
 ```bash
-REPO=/path/to/url-to-obsidian
-
-# 1. Install the plugin
-hermes plugins install "file://$REPO/plugin" --enable
-
-# 2. Install the extractor npm package into the plugin dir + Chromium
-cd "$HERMES_HOME/plugins/web-to-obsidian"
-npm install
-npx playwright install chromium
-
-# 3. Configure
-cd "$REPO"
-cp plugin/config.example.toml "$HERMES_HOME/plugins/web-to-obsidian/config.toml"
-# edit $HERMES_HOME/plugins/web-to-obsidian/config.toml => vault, destination, ...
-hermes gateway restart
+cd /path/to/url-to-obsidian/plugin
+./install.sh --profile coder        # or --hermes-home /path/to/hermes-home; default = ~/.hermes
+# review <profile>/plugins/web-to-obsidian/config.toml (vault, destination, ...)
+# restart your Hermes gateway service from a separate shell
 ```
+
+`plugin/install.sh` is idempotent — re-running it upgrades the extractor npm
+package and refreshes the skill symlink. For a custom Hermes home (no profile),
+pass `--hermes-home "$HOME/.hermes"`. Step-by-step manual commands are
+documented in [`plugin/README.md`](plugin/README.md#install).
 
 Then clip articles:
 

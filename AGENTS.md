@@ -29,9 +29,11 @@ url-to-obsidian/
 │   ├── __init__.py             # entry point: /webclip + resume tool
 │   ├── web_to_obsidian.py      # core logic
 │   ├── plugin.yaml             # plugin metadata + version
+│   ├── install.sh              # one-shot installer (ships with hermes plugins install)
 │   ├── package.json            # npm deps for the extractor (installed into plugin/node_modules)
 │   ├── config.toml             # local non-secret config (tracked; edit per install)
 │   ├── config.example.toml     # Configuration template
+│   ├── after-install.md        # Follow-up steps shown by `hermes plugins install`
 │   ├── README.md               # Install / config / usage / safety
 │   └── tests/                  # python plugin test suites (pytest)
 ├── extractor/                  # node.js content extraction engine

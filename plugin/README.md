@@ -19,10 +19,17 @@ See `../CHANGELOG.md` for version history.
 
 ## Install
 
-Install from a Git checkout using Hermes' plugin manager, then install the
-published extractor npm package into the plugin directory. Keeping the
-extractor inside `plugin/node_modules` means that upgrading the plugin also
-upgrades its extractor dependency:
+The recommended way is the one-shot installer bundled in this directory (it
+wires up the plugin, the extractor npm package, Playwright Chromium, and the
+skill symlink):
+
+```bash
+cd /path/to/url-to-obsidian/plugin
+./install.sh --profile coder        # or --hermes-home /path/to/hermes-home
+```
+
+Manual steps (what `./install.sh` automates), for a git checkout using Hermes'
+plugin manager:
 
 ```bash
 REPO=/path/to/url-to-obsidian
@@ -31,11 +38,14 @@ cd "$HERMES_HOME/plugins/web-to-obsidian"
 npm install
 npx playwright install chromium
 cp "$REPO/plugin/config.example.toml" "$HERMES_HOME/plugins/web-to-obsidian/config.toml"
-hermes gateway restart
+# symlink the skill so the agent auto-discovers the workflow:
+ln -s "$REPO/skill" "$HERMES_HOME/skills/productivity/web-clip-to-obsidian"
 ```
 
 For a named profile, set `HERMES_HOME` to that profile before the commands.
-Review `config.toml` before restarting the Gateway.
+Review `config.toml` before restarting the Gateway. `after-install.md` in the
+plugin directory is printed by `hermes plugins install` and contains these
+follow-up steps.
 
 > The installed plugin is a clone of `$REPO/plugin`. After `npm install`, the
 > extractor lives at `<plugin_root>/node_modules/@tiny-codes/web-clip-extractor`
