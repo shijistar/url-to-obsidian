@@ -29,8 +29,25 @@ jobs:
         with:
           node-version: ${{ inputs.node-version || 24 }}
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install dependencies
         run: npm ci
+        working-directory: ./extractor
+
+      - name: Run checks
+        run: npm run check
+        working-directory: ./extractor
 
       - name: Run unit tests from source codes
         run: npm test
+        working-directory: ./extractor
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run plugin tests in python
+        run: python3 -m pytest tests/ -v
