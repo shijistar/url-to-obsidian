@@ -13,20 +13,22 @@ See `../CHANGELOG.md` for version history.
 
 - Hermes Agent with standalone plugin support.
 - Python 3.11+ and PyYAML.
-- Node.js 18+ (`extractor/` must have its locked deps installed).
+- Node.js 18+ (`plugin/node_modules` must contain `@tiny-codes/web-clip-extractor`).
 - Git for default synchronization.
 - Playwright Chromium (via the extractor) for dynamic fallback.
 
 ## Install
 
-Install from a local Git checkout using Hermes' plugin manager, then install
-the locked Node dependency tree of the sibling extractor:
+Install from a Git checkout using Hermes' plugin manager, then install the
+published extractor npm package into the plugin directory. Keeping the
+extractor inside `plugin/node_modules` means that upgrading the plugin also
+upgrades its extractor dependency:
 
 ```bash
 REPO=/path/to/url-to-obsidian
 hermes plugins install "file://$REPO/plugin" --enable
-cd "$REPO/extractor"
-npm ci --ignore-scripts
+cd "$HERMES_HOME/plugins/web-to-obsidian"
+npm install
 npx playwright install chromium
 cp "$REPO/plugin/config.example.toml" "$HERMES_HOME/plugins/web-to-obsidian/config.toml"
 hermes gateway restart
@@ -35,10 +37,12 @@ hermes gateway restart
 For a named profile, set `HERMES_HOME` to that profile before the commands.
 Review `config.toml` before restarting the Gateway.
 
-> The installed plugin is a symlink to `$REPO/plugin`; the extractor stays at
-> `$REPO/extractor` and is located as `plugin_root.parent / "extractor"` at
-> runtime (legacy layouts where the plugin sat at the repo root with an
-> `extractor/` subdirectory are also tolerated).
+> The installed plugin is a clone of `$REPO/plugin`. After `npm install`, the
+> extractor lives at `<plugin_root>/node_modules/@tiny-codes/web-clip-extractor`
+> and is resolved first at runtime. When developing from a source checkout
+> (no `npm install`), the plugin falls back to the source-repo sibling
+> `plugin_root.parent / "extractor"` (legacy layouts where the extractor sat
+> directly under the plugin root are also tolerated).
 
 ## Configuration
 

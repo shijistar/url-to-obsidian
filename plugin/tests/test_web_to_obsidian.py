@@ -628,6 +628,48 @@ class ExtractorTests(unittest.TestCase):
             with self.assertRaises(clip.ClipError):
                 clip.run_extractor(Path("/plugin"), "https://example.com")
 
+    def test_extractor_dir_prefers_plugin_local_npm_install(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plugin_root = root / "plugin_root"
+            npm_pkg = (
+                plugin_root / "node_modules" / "@tiny-codes" / "web-clip-extractor"
+            )
+            (npm_pkg / "src").mkdir(parents=True)
+            (npm_pkg / "src" / "cli.mjs").write_text(
+                "#!/usr/bin/env node\n", encoding="utf-8"
+            )
+            # A sibling extractor also exists; npm install must win.
+            sibling = root / "extractor"
+            (sibling / "src").mkdir(parents=True)
+            (sibling / "src" / "cli.mjs").write_text(
+                "#!/usr/bin/env node\n", encoding="utf-8"
+            )
+            self.assertEqual(clip._extractor_dir(plugin_root), npm_pkg)
+
+    def test_extractor_dir_falls_back_to_source_repo_sibling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plugin_root = root / "plugin_root"
+            plugin_root.mkdir(parents=True)
+            sibling = root / "extractor"
+            (sibling / "src").mkdir(parents=True)
+            (sibling / "src" / "cli.mjs").write_text(
+                "#!/usr/bin/env node\n", encoding="utf-8"
+            )
+            self.assertEqual(clip._extractor_dir(plugin_root), sibling)
+
+    def test_extractor_dir_falls_back_to_legacy_subdirectory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plugin_root = root / "plugin_root"
+            legacy = plugin_root / "extractor"
+            (legacy / "src").mkdir(parents=True)
+            (legacy / "src" / "cli.mjs").write_text(
+                "#!/usr/bin/env node\n", encoding="utf-8"
+            )
+            self.assertEqual(clip._extractor_dir(plugin_root), legacy)
+
 
 class GitSafetyTests(unittest.TestCase):
     def _git(self, root, *args):

@@ -11,6 +11,8 @@ __pycache__/
 extractor/node_modules/
 extractor/dist/
 extractor/coverage/
+plugin/node_modules/
+plugin/package-lock.json
 
 # Playwright / browser state
 playwright-report/

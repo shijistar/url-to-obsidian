@@ -43,9 +43,9 @@ REPO=/path/to/url-to-obsidian
 # 1. Install the plugin
 hermes plugins install "file://$REPO/plugin" --enable
 
-# 2. Install the extractor's locked Node deps + Chromium
-cd "$REPO/extractor"
-npm ci --ignore-scripts
+# 2. Install the extractor npm package into the plugin dir + Chromium
+cd "$HERMES_HOME/plugins/web-to-obsidian"
+npm install
 npx playwright install chromium
 
 # 3. Configure

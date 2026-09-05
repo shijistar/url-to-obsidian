@@ -29,6 +29,7 @@ url-to-obsidian/
 │   ├── __init__.py             # entry point: /webclip + resume tool
 │   ├── web_to_obsidian.py      # core logic
 │   ├── plugin.yaml             # plugin metadata + version
+│   ├── package.json            # npm deps for the extractor (installed into plugin/node_modules)
 │   ├── config.toml             # local non-secret config (tracked; edit per install)
 │   ├── config.example.toml     # Configuration template
 │   ├── README.md               # Install / config / usage / safety
@@ -76,7 +77,7 @@ The project tracks module versions in **three** places. The CHANGELOG uses
 
 | Place                    | Field                    | Current           |
 | ------------------------ | ------------------------ | ----------------- |
-| `plugin/plugin.yaml`     | `version`                | 0.5.1             |
+| `plugin/plugin.yaml`     | `version`                | 0.7.0             |
 | `extractor/package.json` | `version`                | 0.2.0             |
 | `skill/SKILL.md`         | frontmatter `version`    | 1.4.0             |
 | `CHANGELOG.md`           | `## YYYY-MM-DD` headings | 2026-09-05 latest |

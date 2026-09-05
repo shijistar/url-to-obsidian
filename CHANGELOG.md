@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Docs aligned with the restructured repo** — `skill/SKILL.md` config path now points at `plugin/config.toml` (tracked, not `.gitignored`) and the deploy symlink targets `plugin/`; `extractor/README.md` documents `npx playwright install chromium`; anti-bot fallback docs mark `author`/`published`/`description`/`site`/`markdown` as required (may be empty).
 - **CHANGELOG merged the two `2026-07-26` headings** into one.
 - **Plugin slash command renamed `/clip` → `/webclip`** — avoids colliding with the `clip` skill's auto-generated `/clip` command in Hermes (skills scan only skips built-in commands, not plugin commands). Plugin version bumped 0.5.1 → 0.6.0; skill 1.4.0 → 1.4.1; docs, error strings, and the plugin registration test updated. The `[clip]` config section name and `webclip_id` field are unchanged.
+- **Plugin-local npm extractor install** — `plugin/` now ships a `package.json` declaring `@tiny-codes/web-clip-extractor` (the published npm package), so a plugin install can pull the matching Node.js extractor into `plugin/node_modules` and upgrade it in lockstep with the plugin. `_extractor_dir()` prefers the plugin-local npm package, falling back to the source-repo sibling and then the legacy subdirectory. `.gitignore` ignores `plugin/node_modules/` and `plugin/package-lock.json`. Plugin version bumped 0.6.0 → 0.7.0; covered by 3 new resolution-order unit tests (npm-preferred / sibling fallback / legacy fallback).
 
 ## 2026-09-04
 

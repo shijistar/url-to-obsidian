@@ -1618,12 +1618,24 @@ def _extractor_environment() -> dict[str, str]:
 def _extractor_dir(plugin_root: Path) -> Path:
     """Locate the standalone Node.js extractor package.
 
-    The extractor is a sibling of the Hermes plugin package in the source
-    repository (``extractor/`` at the repo root, ``plugin/`` beside it). A
-    legacy layout where the plugin lived directly at the repo root is also
-    tolerated, in which case the extractor is a direct subdirectory of
-    *plugin_root*.
+    Resolution order (first match wins):
+
+    1. **Plugin-local npm install** — ``plugin_root/node_modules`` contains
+       the published ``@tiny-codes/web-clip-extractor`` package (installed
+       with ``npm install`` inside the plugin directory). This is the
+       production layout after ``hermes plugins install`` pulls the plugin
+       from git: extractor version rides along with the plugin version.
+    2. **Source-repo sibling** — extractor at ``plugin_root.parent /
+       "extractor"`` (the monorepo layout where ``plugin/`` and
+       ``extractor/`` sit side by side).
+    3. **Legacy subdirectory** — extractor directly under *plugin_root*
+       (pre-restructure layout).
     """
+    npm_pkg = (
+        plugin_root / "node_modules" / "@tiny-codes" / "web-clip-extractor"
+    )
+    if (npm_pkg / "src" / "cli.mjs").is_file():
+        return npm_pkg
     direct = plugin_root / "extractor"
     if (direct / "src" / "cli.mjs").is_file():
         return direct
