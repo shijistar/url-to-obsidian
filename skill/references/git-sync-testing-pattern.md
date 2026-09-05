@@ -1,6 +1,6 @@
 # Git Sync Testing Pattern
 
-Pattern for unit-testing `GitSync.preflight()` and `GitSync.finalize()` in `tests/test_web_to_obsidian.py`.
+Pattern for unit-testing `GitSync.preflight()` and `GitSync.finalize()` in `plugin/tests/test_web_to_obsidian.py`.
 
 ## Standard Setup
 

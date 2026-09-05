@@ -7,8 +7,8 @@ from unittest import mock
 import web_to_obsidian as clip
 
 
-# After restructure, the plugin lives in plugin/ subdirectory
-ROOT = Path(__file__).resolve().parents[1] / "plugin"
+# Tests live next to the plugin package: plugin/tests/ → plugin/
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class FakeContext:

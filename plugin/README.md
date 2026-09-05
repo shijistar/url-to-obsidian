@@ -197,14 +197,14 @@ response.
 
 ## Tests
 
-Python tests live in `../tests/` and are run with pytest from the repo root:
+Python tests are colocated with the plugin in `tests/` (same directory). Run
+pytest from the plugin directory:
 
 ```bash
-cd ..
 python3 -m pytest tests/ -v
 ```
 
 The tests use fixtures, temporary directories, and temporary Git
 repositories; they do not write the configured real Vault. A `tests/conftest.py`
-injects the plugin directory into `sys.path` so `import web_to_obsidian`
+injects the plugin directory (`..`) into `sys.path` so `import web_to_obsidian`
 resolves here.
