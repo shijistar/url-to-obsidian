@@ -32,8 +32,10 @@ jobs:
 
       - name: Publish a prerelease version to npm
         run: npm publish --tag beta --ignore-scripts --provenance --access=public
+        working-directory: ./extractor
         if: github.event.release.prerelease
 
       - name: Publish a regular version to npm
         run: npm publish --ignore-scripts --provenance --access=public
+        working-directory: ./extractor
         if: github.event.release.prerelease == false
