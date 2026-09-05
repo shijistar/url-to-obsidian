@@ -1,0 +1,18 @@
+AGENTS.md
+  h_99cad05bea77d1 10,26,32-39,41,43-45,77
+  h_99cad05bea77d1 9,11-14,27-31,40,42,57,76,78-81,148
+README.md
+  h_99cad05bea77d1 34,38,95
+  h_99cad05bea77d1 35,94,96-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "5402f6ca13abd19ff24af59ea87260d0fb57dc36",
+  "prompts": {},
+  "humans": {
+    "h_99cad05bea77d1": {
+      "author": "Fengbao Li <shijistar@gmail.com>"
+    }
+  }
+}
