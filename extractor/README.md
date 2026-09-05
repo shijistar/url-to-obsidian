@@ -15,6 +15,12 @@ plugin drives this extractor.
   after `npm ci` — `--ignore-scripts` intentionally skips the download that
   Playwright's postinstall normally performs).
 
+## Install
+
+```bash
+npm install @tiny-codes/web-clip-extractor
+```
+
 ## Dependencies
 
 | Package      | Purpose                                   |
