@@ -6,11 +6,11 @@ dated notes into an Obsidian vault, and synchronizes them via guarded Git.
 
 ## Modules
 
-| Path         | What it is                                                                 | Key files                                                                                                         |
-| ------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `plugin/`    | Hermes plugin package: config, safe vault writes, image handling, Git sync | `__init__.py`, `web_to_obsidian.py`, `plugin.yaml`, `config.example.toml`, `config.toml`                          |
-| `extractor/` | Hardened Node.js extraction engine (Defuddle static + Playwright fallback) | `src/cli.mjs`, `src/extractor.mjs`, `src/network-policy.mjs`, `package.json`                                      |
-| `skill/`     | Hermes agent skill teaching the clip-to-Obsidian workflow                  | `SKILL.md`, `references/*.md`                                                                                     |
+| Path            | What it is                                                                 | Key files                                                                                                         |
+| --------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `plugin/`       | Hermes plugin package: config, safe vault writes, image handling, Git sync | `__init__.py`, `web_to_obsidian.py`, `plugin.yaml`, `config.example.toml`, `config.toml`                          |
+| `extractor/`    | Hardened Node.js extraction engine (Defuddle static + Playwright fallback) | `src/cli.mjs`, `src/extractor.mjs`, `src/network-policy.mjs`, `package.json`                                      |
+| `skill/`        | Hermes agent skill teaching the clip-to-Obsidian workflow                  | `SKILL.md`, `references/*.md`                                                                                     |
 | `plugin/tests/` | Python plugin test suites                                                  | `conftest.py`, `test_web_to_obsidian.py`, `test_integration.py`, `test_plugin.py`, `test_security_regressions.py` |
 
 The extractor is a **sibling** of the plugin package, not a subdirectory:
@@ -38,10 +38,11 @@ url-to-obsidian/
 │   ├── src/extractor.mjs       # static + Playwright extraction
 │   ├── src/network-policy.mjs
 │   ├── test/                   # node --test suites + fixtures
-│   ├── README.md               # extractor readme
+│   ├── README.md               # extractor README
 │   └── package.json            # extractor version
 ├── skill/                      # Hermes agent skill
-│   ├── SKILL.md                # workflow instructions for the agent + version in frontmatter
+│   ├── SKILL.md                # workflow instructions for the agent + version in
+│   ├── README.md               # skill README
 │   └── references/             # site quirks & fallback deep-dives
 ```
 
@@ -85,7 +86,7 @@ no requirement that they match a changelog heading.
 
 ## Mandatory rules
 
-### Rule 1 — Unit tests are required
+### 1. Unit tests are required
 
 Every **new feature** or **bug fix** MUST ship with unit tests covering the
 changed behavior:
@@ -101,7 +102,7 @@ changed behavior:
 
 Do not merge a change whose tests do not pass in the local run.
 
-### Rule 2 — Version bumps + CHANGELOG updates are required
+### 2. Version bumps + CHANGELOG updates are required
 
 Any **new feature or behavior change** MUST:
 
