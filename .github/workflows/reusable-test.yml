@@ -46,8 +46,14 @@ jobs:
         run: npm test
         working-directory: ./extractor
 
-      - name: Install pytest
-        run: pip install pytest
+      - name: Install Python test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          else
+            pip install pytest pyyaml
+          fi
 
       - name: Run plugin tests in python
         run: python3 -m pytest tests/ -v
