@@ -38,7 +38,7 @@ url-to-obsidian/
 │   ├── src/extractor.mjs       # static + Playwright extraction
 │   ├── src/network-policy.mjs
 │   ├── test/                   # node --test suites + fixtures
-│   └── README.md               # extractor readme
+│   ├── README.md               # extractor readme
 │   └── package.json            # extractor version
 ├── skill/                      # Hermes agent skill
 │   ├── SKILL.md                # workflow instructions for the agent + version in frontmatter

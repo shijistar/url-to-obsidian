@@ -35,7 +35,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Quick start
 
-Requirements: `Hermes Agent`, `Python` 3.11+,` Node.js` 18+, `Git`, `PyYAML`.
+Requirements: `Hermes Agent`, `Python` 3.11+, `Node.js` 18+, `Git`, `PyYAML`.
 
 ```bash
 REPO=/path/to/url-to-obsidian
