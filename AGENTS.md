@@ -6,12 +6,12 @@ dated notes into an Obsidian vault, and synchronizes them via guarded Git.
 
 ## Modules
 
-| Path | What it is | Key files |
-|------|------------|-----------|
-| `plugin/` | Hermes plugin package: config, safe vault writes, image handling, Git sync | `__init__.py`, `web_to_obsidian.py`, `plugin.yaml`, `config.example.toml`, `config.toml` |
-| `extractor/` | Hardened Node.js extraction engine (Defuddle static + Playwright fallback) | `src/cli.mjs`, `src/extractor.mjs`, `src/network-policy.mjs`, `package.json` |
-| `skill/` | Hermes agent skill teaching the clip-to-Obsidian workflow | `SKILL.md`, `references/*.md` |
-| `tests/` | Python plugin test suites | `conftest.py`, `test_web_to_obsidian.py`, `test_integration.py`, `test_plugin.py`, `test_security_regressions.py` |
+| Path         | What it is                                                                 | Key files                                                                                                         |
+| ------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `plugin/`    | Hermes plugin package: config, safe vault writes, image handling, Git sync | `__init__.py`, `web_to_obsidian.py`, `plugin.yaml`, `config.example.toml`, `config.toml`                          |
+| `extractor/` | Hardened Node.js extraction engine (Defuddle static + Playwright fallback) | `src/cli.mjs`, `src/extractor.mjs`, `src/network-policy.mjs`, `package.json`                                      |
+| `skill/`     | Hermes agent skill teaching the clip-to-Obsidian workflow                  | `SKILL.md`, `references/*.md`                                                                                     |
+| `tests/`     | Python plugin test suites                                                  | `conftest.py`, `test_web_to_obsidian.py`, `test_integration.py`, `test_plugin.py`, `test_security_regressions.py` |
 
 The extractor is a **sibling** of the plugin package, not a subdirectory:
 `plugin/` and `extractor/` both live at the repo root. At runtime the plugin
@@ -23,22 +23,26 @@ fallback for `plugin_root/extractor`).
 ```
 url-to-obsidian/
 ├── AGENTS.md
-├── CHANGELOG.md
-├── README.md                 # project overview
-├── plugin/                   # Hermes plugin (install target)
-│   ├── __init__.py           # entry point: /webclip + resume tool
-│   ├── web_to_obsidian.py    # core logic
-│   ├── plugin.yaml           # plugin metadata + version
-│   ├── config.toml           # local non-secret config (tracked)
-│   └── config.example.toml
-├── extractor/                # Node.js extraction engine
-│   ├── src/                  # cli.mjs / extractor.mjs / network-policy.mjs
-│   ├── test/                 # node --test suites + fixtures
-│   └── package.json          # extractor version
-├── skill/                    # Hermes agent skill
-│   ├── SKILL.md              # workflow + version in frontmatter
-│   └── references/
-└── tests/                    # Python pytest suites
+├── CHANGELOG.md                # Version history
+├── README.md                   # project overview
+├── plugin/                     # Hermes plugin (install target)
+│   ├── __init__.py             # entry point: /webclip + resume tool
+│   ├── web_to_obsidian.py      # core logic
+│   ├── plugin.yaml             # plugin metadata + version
+│   ├── config.toml             # local non-secret config (tracked; edit per install)
+│   ├── config.example.toml     # Configuration template
+│   ├── README.md               # Install / config / usage / safety
+│   └── tests/                  # python plugin test suites (pytest)
+├── extractor/                  # node.js content extraction engine
+│   ├── src/cli.mjs             # CLI entry point
+│   ├── src/extractor.mjs       # static + Playwright extraction
+│   ├── src/network-policy.mjs
+│   ├── test/                   # node --test suites + fixtures
+│   └── README.md               # extractor readme
+│   └── package.json            # extractor version
+├── skill/                      # Hermes agent skill
+│   ├── SKILL.md                # workflow instructions for the agent + version in frontmatter
+│   └── references/             # site quirks & fallback deep-dives
 ```
 
 ## Build & test
@@ -50,7 +54,7 @@ python3 -m pytest tests/ -v
 ```
 
 - `tests/conftest.py` injects `plugin/` into `sys.path` so `import
-  web_to_obsidian` resolves to `plugin/web_to_obsidian.py`.
+web_to_obsidian` resolves to `plugin/web_to_obsidian.py`.
 - Test suites: core unit tests (`test_web_to_obsidian.py`), real Git/vault
   integration (`test_integration.py`), plugin registration
   (`test_plugin.py`), and security regressions (`test_security_regressions.py`).
@@ -69,12 +73,12 @@ npm run check             # node --check on each src module
 The project tracks module versions in **three** places. The CHANGELOG uses
 **date headings** (`## YYYY-MM-DD`), not version numbers:
 
-| Place | Field | Current |
-|-------|-------|---------|
-| `plugin/plugin.yaml` | `version` | 0.5.1 |
-| `extractor/package.json` | `version` | 0.2.0 |
-| `skill/SKILL.md` | frontmatter `version` | 1.4.0 |
-| `CHANGELOG.md` | `## YYYY-MM-DD` headings | 2026-09-05 latest |
+| Place                    | Field                    | Current           |
+| ------------------------ | ------------------------ | ----------------- |
+| `plugin/plugin.yaml`     | `version`                | 0.5.1             |
+| `extractor/package.json` | `version`                | 0.2.0             |
+| `skill/SKILL.md`         | frontmatter `version`    | 1.4.0             |
+| `CHANGELOG.md`           | `## YYYY-MM-DD` headings | 2026-09-05 latest |
 
 Module versions are independent of each other and of the CHANGELOG; there is
 no requirement that they match a changelog heading.

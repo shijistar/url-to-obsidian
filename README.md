@@ -16,34 +16,6 @@ The project is a small monorepo of three parts:
 - [`skill/`](skill/README.md) — a Hermes agent skill teaching the full
   clip-to-Obsidian workflow, including anti-bot fallbacks and site quirks.
 
-See [CHANGELOG.md](CHANGELOG.md) for version history.
-
-## Project structure
-
-```
-url-to-obsidian/
-├── README.md                # This overview
-├── CHANGELOG.md             # Version history
-├── plugin/                  # Hermes plugin package (install target)
-│   ├── __init__.py          # Plugin entry point (slash command + resume tool)
-│   ├── web_to_obsidian.py   # Core plugin logic
-│   ├── plugin.yaml          # Plugin metadata
-│   ├── config.toml          # Local config (tracked; edit per install)
-│   ├── config.example.toml  # Configuration template
-│   └── README.md            # Install / config / usage / safety
-├── extractor/               # Node.js content extraction engine
-│   ├── src/cli.mjs          # CLI entry point
-│   ├── src/extractor.mjs    # Static + Playwright extraction
-│   ├── src/network-policy.mjs
-│   ├── test/                # node --test suites
-│   └── README.md            # CLI / error codes / network safety
-├── skill/                   # Hermes agent skill
-│   ├── SKILL.md             # Workflow instructions for the agent
-│   ├── references/          # Site quirks & fallback deep-dives
-│   └── README.md            # Skill overview / deployment / reference index
-└── tests/                   # Python plugin test suites (pytest)
-```
-
 ## Current scope
 
 - Static extraction with Defuddle; Playwright Chromium fallback for weak
@@ -59,9 +31,11 @@ url-to-obsidian/
 - Linux/WSL only: the implementation uses `fcntl` locks and POSIX process
   groups.
 
+See [CHANGELOG.md](CHANGELOG.md) for version history.
+
 ## Quick start
 
-Requirements: Hermes Agent, Python 3.11+, Node.js 18+, Git, PyYAML.
+Requirements: `Hermes Agent`, `Python` 3.11+,` Node.js` 18+, `Git`, `PyYAML`.
 
 ```bash
 REPO=/path/to/url-to-obsidian
@@ -117,12 +91,12 @@ repositories; they do not write the configured real Vault.
 
 ## Documentation map
 
-| Topic                    | Where                                        |
-|--------------------------|----------------------------------------------|
-| Install / config / usage | [`plugin/README.md`](plugin/README.md)       |
-| Plugin network/Vault/Git safety | [`plugin/README.md`](plugin/README.md) |
-| Extractor CLI & error codes | [`extractor/README.md`](extractor/README.md) |
-| Extractor network policy | [`extractor/README.md`](extractor/README.md#network-safety) |
-| Agent skill deployment   | [`skill/README.md`](skill/README.md)         |
-| Anti-bot fallbacks       | `skill/references/` (index in skill/README.md) |
-| Version history          | [`CHANGELOG.md`](CHANGELOG.md)               |
+| Topic                           | Where                                                       |
+| ------------------------------- | ----------------------------------------------------------- |
+| Install / config / usage        | [`plugin/README.md`](plugin/README.md)                      |
+| Plugin network/Vault/Git safety | [`plugin/README.md`](plugin/README.md)                      |
+| Extractor CLI & error codes     | [`extractor/README.md`](extractor/README.md)                |
+| Extractor network policy        | [`extractor/README.md`](extractor/README.md#network-safety) |
+| Agent skill deployment          | [`skill/README.md`](skill/README.md)                        |
+| Anti-bot fallbacks              | `skill/references/` (index in skill/README.md)              |
+| Version history                 | [`CHANGELOG.md`](CHANGELOG.md)                              |
