@@ -1,6 +1,6 @@
 {
-  "name": "web-clip-extractor",
-  "version": "0.2.0-alpha.0",
+  "name": "@tiny-codes/web-clip-extractor",
+  "version": "0.2.0-alpha.1",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -23,7 +23,8 @@
   "author": "Fengbao Li <shijistar@gmail.com>",
   "sideEffects": false,
   "files": [
-    "src"
+    "src",
+    "README.md"
   ],
   "scripts": {
     "test": "node --test",
