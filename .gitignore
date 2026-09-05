@@ -5,6 +5,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.DS_Store
 
 # Node
 extractor/node_modules/

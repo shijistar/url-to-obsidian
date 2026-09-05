@@ -10,7 +10,7 @@ export const MAX_BODY_BYTES = 8 * 1024 * 1024;
 export const DEFAULT_TIMEOUT_MS = 20_000;
 export const DEFAULT_MAX_REDIRECTS = 5;
 
-const USER_AGENT = 'Web-to-Obsidian/0.1 (+local article extractor)';
+const USER_AGENT = 'Web-Clip-Extractor/0.1 (+local article extractor)';
 const HTML_CONTENT_TYPES = new Set(['text/html', 'application/xhtml+xml']);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
@@ -24,12 +24,12 @@ export class PolicyError extends Error {
 
 function ipv4Number(address) {
   if (!net.isIPv4(address)) return null;
-  return address.split('.').reduce((value, part) => (value * 256) + Number(part), 0) >>> 0;
+  return address.split('.').reduce((value, part) => value * 256 + Number(part), 0) >>> 0;
 }
 
 function ipv4InCidr(value, base, prefix) {
   const shift = 32 - prefix;
-  return (value >>> shift) === (base >>> shift);
+  return value >>> shift === base >>> shift;
 }
 
 const BLOCKED_IPV4_RANGES = [
@@ -69,19 +69,21 @@ function parseIpv6(address) {
   const missing = 8 - left.length - right.length;
   if ((halves.length === 1 && missing !== 0) || missing < 0) return null;
 
-  const words = [
-    ...left,
-    ...Array(halves.length === 2 ? missing : 0).fill('0'),
-    ...right,
-  ].map(part => Number.parseInt(part, 16));
-  if (words.length !== 8 || words.some(word => !Number.isInteger(word) || word < 0 || word > 0xffff)) return null;
+  const words = [...left, ...Array(halves.length === 2 ? missing : 0).fill('0'), ...right].map(
+    (part) => Number.parseInt(part, 16),
+  );
+  if (
+    words.length !== 8 ||
+    words.some((word) => !Number.isInteger(word) || word < 0 || word > 0xffff)
+  )
+    return null;
 
   return words.reduce((value, word) => (value << 16n) | BigInt(word), 0n);
 }
 
 function ipv6InCidr(value, base, prefix) {
   const shift = 128n - BigInt(prefix);
-  return (value >> shift) === (base >> shift);
+  return value >> shift === base >> shift;
 }
 
 const BLOCKED_IPV6_RANGES = [
@@ -116,7 +118,7 @@ export function isBlockedIp(address) {
   if (ipv6 === null) return true;
 
   // IPv4-mapped IPv6 (::ffff:0:0/96) is classified by its embedded IPv4 value.
-  if ((ipv6 >> 32n) === 0xffffn) {
+  if (ipv6 >> 32n === 0xffffn) {
     const mapped = Number(ipv6 & 0xffffffffn);
     return BLOCKED_IPV4_RANGES.some(([base, prefix]) => ipv4InCidr(mapped, base, prefix));
   }
@@ -150,7 +152,10 @@ export function normalizeUrl(input, { allowNonDefaultPorts = false } = {}) {
 
   url.hash = '';
   const entries = [...url.searchParams.entries()]
-    .filter(([key]) => !/^utm_/i.test(key) && !['fbclid', 'gclid', 'share_token'].includes(key.toLowerCase()))
+    .filter(
+      ([key]) =>
+        !/^utm_/i.test(key) && !['fbclid', 'gclid', 'share_token'].includes(key.toLowerCase()),
+    )
     .map(([key, value], index) => ({ key, value, index }))
     .sort((a, b) => {
       if (a.key !== b.key) return a.key < b.key ? -1 : 1;
@@ -169,11 +174,14 @@ function hostnameForDns(url) {
 }
 
 /** Resolve a URL once, reject it if any answer is unsafe, and return a pinned answer. */
-export async function resolveAndValidateUrl(input, {
-  resolver = dns.lookup,
-  allowNonDefaultPorts = false,
-} = {}) {
-  const url = input instanceof URL ? normalizeUrl(input.href, { allowNonDefaultPorts }) : normalizeUrl(input, { allowNonDefaultPorts });
+export async function resolveAndValidateUrl(
+  input,
+  { resolver = dns.lookup, allowNonDefaultPorts = false } = {},
+) {
+  const url =
+    input instanceof URL
+      ? normalizeUrl(input.href, { allowNonDefaultPorts })
+      : normalizeUrl(input, { allowNonDefaultPorts });
   let answers;
   try {
     answers = await resolver(hostnameForDns(url), { all: true, verbatim: true });
@@ -194,7 +202,7 @@ export async function resolveAndValidateUrl(input, {
     url,
     address: answers[0].address,
     family: answers[0].family,
-    addresses: answers.map(answer => ({ address: answer.address, family: answer.family })),
+    addresses: answers.map((answer) => ({ address: answer.address, family: answer.family })),
   };
 }
 
@@ -204,7 +212,10 @@ function firstHeader(headers, name) {
 }
 
 function contentType(headers) {
-  return String(firstHeader(headers, 'content-type') || '').split(';', 1)[0].trim().toLowerCase();
+  return String(firstHeader(headers, 'content-type') || '')
+    .split(';', 1)[0]
+    .trim()
+    .toLowerCase();
 }
 
 function byteLimit(maxBytes) {
@@ -219,7 +230,9 @@ function byteLimit(maxBytes) {
 }
 
 function decoderFor(headers) {
-  const encoding = String(firstHeader(headers, 'content-encoding') || 'identity').trim().toLowerCase();
+  const encoding = String(firstHeader(headers, 'content-encoding') || 'identity')
+    .trim()
+    .toLowerCase();
   if (!encoding || encoding === 'identity') return null;
   if (encoding === 'gzip' || encoding === 'x-gzip') return createGunzip();
   if (encoding === 'deflate') return createInflate();
@@ -253,49 +266,54 @@ export function performPinnedRequest({ url, address, family, timeoutMs, maxBytes
   return new Promise((resolve, reject) => {
     const transport = url.protocol === 'https:' ? https : http;
     const dnsHostname = hostnameForDns(url);
-    const request = transport.request({
-      protocol: url.protocol,
-      hostname: dnsHostname,
-      port: url.port || undefined,
-      method: 'GET',
-      path: `${url.pathname}${url.search}`,
-      agent: false,
-      family,
-      servername: net.isIP(dnsHostname) ? undefined : dnsHostname,
-      headers: {
-        'User-Agent': USER_AGENT,
-        Accept: 'text/html, application/xhtml+xml;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        ...headers,
-        Host: url.host,
+    const request = transport.request(
+      {
+        protocol: url.protocol,
+        hostname: dnsHostname,
+        port: url.port || undefined,
+        method: 'GET',
+        path: `${url.pathname}${url.search}`,
+        agent: false,
+        family,
+        servername: net.isIP(dnsHostname) ? undefined : dnsHostname,
+        headers: {
+          'User-Agent': USER_AGENT,
+          Accept: 'text/html, application/xhtml+xml;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          ...headers,
+          Host: url.host,
+        },
+        lookup(_hostname, lookupOptions, callback) {
+          if (lookupOptions?.all) callback(null, [{ address, family }]);
+          else callback(null, address, family);
+        },
       },
-      lookup(_hostname, lookupOptions, callback) {
-        if (lookupOptions?.all) callback(null, [{ address, family }]);
-        else callback(null, address, family);
+      async (response) => {
+        try {
+          const statusCode = response.statusCode || 0;
+          if (REDIRECT_STATUSES.has(statusCode)) {
+            response.resume();
+            resolve({ statusCode, headers: response.headers, body: Buffer.alloc(0) });
+            return;
+          }
+          const declaredSize = Number(firstHeader(response.headers, 'content-length'));
+          if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
+            response.destroy();
+            reject(error('BODY_TOO_LARGE', 'The response body is too large.'));
+            return;
+          }
+          const body = await collectBody(response, maxBytes);
+          resolve({ statusCode, headers: response.headers, body });
+        } catch (cause) {
+          reject(cause);
+        }
       },
-    }, async response => {
-      try {
-        const statusCode = response.statusCode || 0;
-        if (REDIRECT_STATUSES.has(statusCode)) {
-          response.resume();
-          resolve({ statusCode, headers: response.headers, body: Buffer.alloc(0) });
-          return;
-        }
-        const declaredSize = Number(firstHeader(response.headers, 'content-length'));
-        if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
-          response.destroy();
-          reject(error('BODY_TOO_LARGE', 'The response body is too large.'));
-          return;
-        }
-        const body = await collectBody(response, maxBytes);
-        resolve({ statusCode, headers: response.headers, body });
-      } catch (cause) {
-        reject(cause);
-      }
-    });
+    );
 
-    request.setTimeout(timeoutMs, () => request.destroy(error('TIMEOUT', 'The request timed out.')));
-    request.once('error', cause => {
+    request.setTimeout(timeoutMs, () =>
+      request.destroy(error('TIMEOUT', 'The request timed out.')),
+    );
+    request.once('error', (cause) => {
       if (cause instanceof PolicyError) reject(cause);
       else reject(error('NETWORK_ERROR', 'The request failed.'));
     });
@@ -308,16 +326,21 @@ export function performPinnedRequest({ url, address, family, timeoutMs, maxBytes
  * answer. Redirects are returned to the caller so an interception layer can
  * revalidate the browser's next request before any network I/O.
  */
-export async function fetchResourceOnce(input, {
-  resolver = dns.lookup,
-  requestImpl = performPinnedRequest,
-  maxBytes = MAX_BODY_BYTES,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
-  allowNonDefaultPorts = false,
-  headers = { Accept: '*/*' },
-} = {}) {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw error('INVALID_OPTIONS', 'The body limit is invalid.');
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw error('INVALID_OPTIONS', 'The timeout is invalid.');
+export async function fetchResourceOnce(
+  input,
+  {
+    resolver = dns.lookup,
+    requestImpl = performPinnedRequest,
+    maxBytes = MAX_BODY_BYTES,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    allowNonDefaultPorts = false,
+    headers = { Accept: '*/*' },
+  } = {},
+) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
+    throw error('INVALID_OPTIONS', 'The body limit is invalid.');
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
+    throw error('INVALID_OPTIONS', 'The timeout is invalid.');
   const approved = await resolveAndValidateUrl(input, { resolver, allowNonDefaultPorts });
   const response = await requestImpl({
     url: approved.url,
@@ -327,7 +350,11 @@ export async function fetchResourceOnce(input, {
     maxBytes,
     headers,
   });
-  if (!response || !Number.isInteger(Number(response.statusCode)) || !Buffer.isBuffer(response.body)) {
+  if (
+    !response ||
+    !Number.isInteger(Number(response.statusCode)) ||
+    !Buffer.isBuffer(response.body)
+  ) {
     throw error('INVALID_RESPONSE', 'The response body is invalid.');
   }
   return {
@@ -339,18 +366,24 @@ export async function fetchResourceOnce(input, {
 }
 
 /** Securely fetch an HTML document, validating and pinning every redirect hop. */
-export async function fetchHtml(input, {
-  resolver = dns.lookup,
-  requestImpl = performPinnedRequest,
-  maxRedirects = DEFAULT_MAX_REDIRECTS,
-  maxBytes = MAX_BODY_BYTES,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
-  allowNonDefaultPorts = false,
-  headers,
-} = {}) {
-  if (!Number.isInteger(maxRedirects) || maxRedirects < 0) throw error('INVALID_OPTIONS', 'The redirect limit is invalid.');
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw error('INVALID_OPTIONS', 'The body limit is invalid.');
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw error('INVALID_OPTIONS', 'The timeout is invalid.');
+export async function fetchHtml(
+  input,
+  {
+    resolver = dns.lookup,
+    requestImpl = performPinnedRequest,
+    maxRedirects = DEFAULT_MAX_REDIRECTS,
+    maxBytes = MAX_BODY_BYTES,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    allowNonDefaultPorts = false,
+    headers,
+  } = {},
+) {
+  if (!Number.isInteger(maxRedirects) || maxRedirects < 0)
+    throw error('INVALID_OPTIONS', 'The redirect limit is invalid.');
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
+    throw error('INVALID_OPTIONS', 'The body limit is invalid.');
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
+    throw error('INVALID_OPTIONS', 'The timeout is invalid.');
 
   let current = normalizeUrl(input, { allowNonDefaultPorts });
   for (let redirects = 0; ; redirects += 1) {
@@ -368,7 +401,8 @@ export async function fetchHtml(input, {
     if (REDIRECT_STATUSES.has(statusCode)) {
       const location = firstHeader(response.headers, 'location');
       if (!location) throw error('INVALID_REDIRECT', 'The redirect has no destination.');
-      if (redirects >= maxRedirects) throw error('TOO_MANY_REDIRECTS', 'The response redirected too many times.');
+      if (redirects >= maxRedirects)
+        throw error('TOO_MANY_REDIRECTS', 'The response redirected too many times.');
       let target;
       try {
         target = new URL(location, approved.url);
@@ -385,8 +419,10 @@ export async function fetchHtml(input, {
     if (!HTML_CONTENT_TYPES.has(contentType(response.headers))) {
       throw error('UNSUPPORTED_CONTENT_TYPE', 'The response is not HTML.');
     }
-    if (!Buffer.isBuffer(response.body)) throw error('INVALID_RESPONSE', 'The response body is invalid.');
-    if (response.body.length > maxBytes) throw error('BODY_TOO_LARGE', 'The response body is too large.');
+    if (!Buffer.isBuffer(response.body))
+      throw error('INVALID_RESPONSE', 'The response body is invalid.');
+    if (response.body.length > maxBytes)
+      throw error('BODY_TOO_LARGE', 'The response body is too large.');
 
     return { html: response.body.toString('utf8'), finalUrl: approved.url.href };
   }
